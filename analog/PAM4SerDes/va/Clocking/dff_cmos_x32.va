@@ -1,0 +1,164 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Behavioral 32-bit positive-edge-triggered CMOS DFF bank.
+// Provisional interface: shared single-ended clock and 32 single-ended data/output pins.
+// No reset or enable is included because neither is specified in the available project notes.
+
+
+module dff_cmos_x32(
+	clk, 
+	d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, 
+	d17, d18, d19, d20, d21, d22, d23, d24, d25, d26, d27, d28, d29, d30, d31, 
+	q0, q1, q2, q3, q4, q5, q6, q7, q8, q9, q10, q11, q12, q13, q14, q15, q16, 
+	q17, q18, q19, q20, q21, q22, q23, q24, q25, q26, q27, q28, q29, q30, q31
+);
+
+input clk; electrical clk;
+input d0; electrical d0;
+input d1; electrical d1;
+input d2; electrical d2;
+input d3; electrical d3;
+input d4; electrical d4;
+input d5; electrical d5;
+input d6; electrical d6;
+input d7; electrical d7;
+input d8; electrical d8;
+input d9; electrical d9;
+input d10; electrical d10;
+input d11; electrical d11;
+input d12; electrical d12;
+input d13; electrical d13;
+input d14; electrical d14;
+input d15; electrical d15;
+input d16; electrical d16;
+input d17; electrical d17;
+input d18; electrical d18;
+input d19; electrical d19;
+input d20; electrical d20;
+input d21; electrical d21;
+input d22; electrical d22;
+input d23; electrical d23;
+input d24; electrical d24;
+input d25; electrical d25;
+input d26; electrical d26;
+input d27; electrical d27;
+input d28; electrical d28;
+input d29; electrical d29;
+input d30; electrical d30;
+input d31; electrical d31;
+output q0; electrical q0;
+output q1; electrical q1;
+output q2; electrical q2;
+output q3; electrical q3;
+output q4; electrical q4;
+output q5; electrical q5;
+output q6; electrical q6;
+output q7; electrical q7;
+output q8; electrical q8;
+output q9; electrical q9;
+output q10; electrical q10;
+output q11; electrical q11;
+output q12; electrical q12;
+output q13; electrical q13;
+output q14; electrical q14;
+output q15; electrical q15;
+output q16; electrical q16;
+output q17; electrical q17;
+output q18; electrical q18;
+output q19; electrical q19;
+output q20; electrical q20;
+output q21; electrical q21;
+output q22; electrical q22;
+output q23; electrical q23;
+output q24; electrical q24;
+output q25; electrical q25;
+output q26; electrical q26;
+output q27; electrical q27;
+output q28; electrical q28;
+output q29; electrical q29;
+output q30; electrical q30;
+output q31; electrical q31;
+
+// Set voltage levels and delays to the target process and circuit specifications.
+parameter real vth_clk = 0.5;
+parameter real vth_data = 0.5;
+parameter real vlow = 0.0;
+parameter real vhigh = 1.0;
+parameter real t_propogation = 0 from [0:inf);
+parameter real t_rise = 0 from [0:inf);
+parameter real t_fall = 0 from [0:inf);
+integer state[0:31];
+integer i;
+analog begin
+    @(initial_step) begin
+        for (i = 0; i < 32; i = i + 1) state[i] = 0;
+    end
+    @(cross(V(clk) - vth_clk, +1)) begin
+        state[0] = (V(d0) >= vth_data) ? 1 : 0;
+        state[1] = (V(d1) >= vth_data) ? 1 : 0;
+        state[2] = (V(d2) >= vth_data) ? 1 : 0;
+        state[3] = (V(d3) >= vth_data) ? 1 : 0;
+        state[4] = (V(d4) >= vth_data) ? 1 : 0;
+        state[5] = (V(d5) >= vth_data) ? 1 : 0;
+        state[6] = (V(d6) >= vth_data) ? 1 : 0;
+        state[7] = (V(d7) >= vth_data) ? 1 : 0;
+        state[8] = (V(d8) >= vth_data) ? 1 : 0;
+        state[9] = (V(d9) >= vth_data) ? 1 : 0;
+        state[10] = (V(d10) >= vth_data) ? 1 : 0;
+        state[11] = (V(d11) >= vth_data) ? 1 : 0;
+        state[12] = (V(d12) >= vth_data) ? 1 : 0;
+        state[13] = (V(d13) >= vth_data) ? 1 : 0;
+        state[14] = (V(d14) >= vth_data) ? 1 : 0;
+        state[15] = (V(d15) >= vth_data) ? 1 : 0;
+        state[16] = (V(d16) >= vth_data) ? 1 : 0;
+        state[17] = (V(d17) >= vth_data) ? 1 : 0;
+        state[18] = (V(d18) >= vth_data) ? 1 : 0;
+        state[19] = (V(d19) >= vth_data) ? 1 : 0;
+        state[20] = (V(d20) >= vth_data) ? 1 : 0;
+        state[21] = (V(d21) >= vth_data) ? 1 : 0;
+        state[22] = (V(d22) >= vth_data) ? 1 : 0;
+        state[23] = (V(d23) >= vth_data) ? 1 : 0;
+        state[24] = (V(d24) >= vth_data) ? 1 : 0;
+        state[25] = (V(d25) >= vth_data) ? 1 : 0;
+        state[26] = (V(d26) >= vth_data) ? 1 : 0;
+        state[27] = (V(d27) >= vth_data) ? 1 : 0;
+        state[28] = (V(d28) >= vth_data) ? 1 : 0;
+        state[29] = (V(d29) >= vth_data) ? 1 : 0;
+        state[30] = (V(d30) >= vth_data) ? 1 : 0;
+        state[31] = (V(d31) >= vth_data) ? 1 : 0;
+    end
+    V(q0) <+ transition(state[0] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q1) <+ transition(state[1] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q2) <+ transition(state[2] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q3) <+ transition(state[3] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q4) <+ transition(state[4] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q5) <+ transition(state[5] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q6) <+ transition(state[6] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q7) <+ transition(state[7] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q8) <+ transition(state[8] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q9) <+ transition(state[9] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q10) <+ transition(state[10] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q11) <+ transition(state[11] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q12) <+ transition(state[12] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q13) <+ transition(state[13] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q14) <+ transition(state[14] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q15) <+ transition(state[15] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q16) <+ transition(state[16] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q17) <+ transition(state[17] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q18) <+ transition(state[18] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q19) <+ transition(state[19] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q20) <+ transition(state[20] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q21) <+ transition(state[21] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q22) <+ transition(state[22] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q23) <+ transition(state[23] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q24) <+ transition(state[24] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q25) <+ transition(state[25] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q26) <+ transition(state[26] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q27) <+ transition(state[27] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q28) <+ transition(state[28] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q29) <+ transition(state[29] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q30) <+ transition(state[30] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+    V(q31) <+ transition(state[31] ? vhigh : vlow, t_propogation, t_rise, t_fall);
+end
+endmodule
