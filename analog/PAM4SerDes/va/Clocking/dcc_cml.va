@@ -1,0 +1,89 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Behavioural model of the UWASIC TX CML duty-cycle corrector.
+//
+// This model measures the input period from consecutive rising edges,
+// regenerates the same frequency, and applies a configurable duty cycle.
+//
+// The project specifies the DCC function, CML style and duty-cycle range,
+// but not its transistor topology, control algorithm, output common-mode,
+// or output swing. The output voltage parameters below are placeholders.
+//
+// The regenerated output phase is not guaranteed to preserve the input
+// rising-edge phase. Use for functional duty-cycle testing.
+
+
+module dcc_cml(clk_in, clk_outp, clk_outn, vss);
+
+    input clk_in; // CML transistor level implementation will require differential input
+    output clk_outp, clk_outn;	// differential output - need to confirm
+    inout vss;
+
+    electrical clk_in, clk_outp, clk_outn, vss;
+
+    // Project requirement: 49.6% to 50.4%; nominal target: 50%.
+    parameter real duty_target = 0.500 from [0.496:0.504];
+
+    // Input switching clock threshold, relative to vss
+    parameter real vth = 0.0;
+
+    // Initial estimate until two input rising edges are detected.
+    parameter real f_init = 14.0e9 from (0:inf);
+
+    // Placeholder differential-output levels; will need to change according to transistor level logic.
+    parameter real vcm = 0.6;
+    parameter real vdiff = 0.4 from (0:inf);
+
+    // output transition time - to prevent instantaneous switching
+    parameter real t_edge = 1.0e-12 from (0:inf);
+
+    real last_rise;	// Time of the previous input rising edge
+    real period_est;	// Estimated input clock period
+    real freq_est;	// Estimated input frequency
+    real phase;		// Normalized output phase
+    real logic_state;	// Determines whether output is HIGH or LOW
+    real voutp;		// Positive output voltage
+    real voutn;		// Negative output voltage
+    integer have_rise;	// Indicates whether a first rising edge has been detected
+
+
+    analog begin
+
+        @(initial_step) begin
+            last_rise  = 0.0;
+            period_est = 1.0 / f_init;
+            freq_est   = f_init;
+            have_rise  = 0;
+        end
+
+        // Estimate input period from consecutive positive edges.
+        @(cross(V(clk_in, vss) - vth, +1)) begin
+            if (have_rise == 1) begin
+                period_est = $abstime - last_rise;
+                if (period_est > 0.0)
+                    freq_est = 1.0 / period_est;
+            end
+
+            last_rise = $abstime;
+            have_rise = 1;
+        end
+
+        // Normalized phase, repeating from 0 to 1.
+        phase = idtmod(freq_est, 0.0, 1.0);
+
+        if (phase < duty_target)
+            logic_state = 1.0;
+        else
+            logic_state = -1.0;
+
+        // Complementary differential outputs around vcm.
+        voutp = vcm + 0.5 * vdiff * logic_state;
+        voutn = vcm - 0.5 * vdiff * logic_state;
+
+        V(clk_outp, vss) <+ transition(voutp, 0.0, t_edge);
+        V(clk_outn, vss) <+ transition(voutn, 0.0, t_edge);
+
+    end
+
+endmodule
