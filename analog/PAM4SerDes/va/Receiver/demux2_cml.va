@@ -1,0 +1,53 @@
+// demux2_cml - 1:2 demultiplexer, current mode logic levels.
+//
+// Signals are differential; inputs are compared at 0 V differential and each output
+// leg swings v_cm +- v_swing / 2. The clock runs at half the input bit rate
+// (7 GHz for 14 Gb/s in).
+// - rising edge : store d (earlier bit of the pair)
+// - falling edge: q1 <= d, q0 <= stored bit
+// Both outputs change together on the falling edge; each bit lasts two input bit periods.
+
+`ifndef DEMUX2_CML_VA
+`define DEMUX2_CML_VA
+`include "disciplines.vams"
+
+module demux2_cml(d_p, d_n, clk_p, clk_n, q0_p, q0_n, q1_p, q1_n);
+    input d_p, d_n, clk_p, clk_n;
+    output q0_p, q0_n, q1_p, q1_n;
+    electrical d_p, d_n, clk_p, clk_n, q0_p, q0_n, q1_p, q1_n;
+
+    parameter real vdd = 1.0 from (0:inf);
+    parameter real v_swing = 0.300 from (0:inf);
+    parameter real v_cm = vdd - v_swing / 2.0;
+    parameter real tt = 10.0e-12 from (0:inf);   // output rise/fall time
+    parameter integer init_q0 = 0 from [0:1];
+    parameter integer init_q1 = 0 from [0:1];
+
+    integer held, b0, b1;
+    real y0, y1;
+
+    analog begin
+        @(initial_step) begin
+            held = init_q0;
+            b0 = init_q0;
+            b1 = init_q1;
+        end
+
+        @(cross(V(clk_p, clk_n), +1))
+            held = V(d_p, d_n) > 0;
+
+        @(cross(V(clk_p, clk_n), -1)) begin
+            b0 = held;
+            b1 = V(d_p, d_n) > 0;
+        end
+
+        // 0 .. 1, smoothed; mapped to v_cm +- v_swing / 2 on each leg.
+        y0 = transition(b0, 0, tt) - 0.5;
+        y1 = transition(b1, 0, tt) - 0.5;
+        V(q0_p) <+ v_cm + v_swing * y0;
+        V(q0_n) <+ v_cm - v_swing * y0;
+        V(q1_p) <+ v_cm + v_swing * y1;
+        V(q1_n) <+ v_cm - v_swing * y1;
+    end
+endmodule
+`endif

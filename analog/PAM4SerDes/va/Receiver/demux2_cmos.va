@@ -1,0 +1,44 @@
+// demux2_cmos - 1:2 demultiplexer, CMOS levels (single-ended, 0 .. vdd).
+//
+// The clock runs at half the input bit rate (1.75 GHz for 3.5 Gb/s in).
+// - rising edge : store d (earlier bit of the pair)
+// - falling edge: q1 <= d, q0 <= stored bit
+// Both outputs change together on the falling edge; each bit lasts two input bit periods.
+
+`ifndef DEMUX2_CMOS_VA
+`define DEMUX2_CMOS_VA
+`include "disciplines.vams"
+
+module demux2_cmos(d, clk, q0, q1);
+    input d, clk;
+    output q0, q1;
+    electrical d, clk, q0, q1;
+
+    parameter real vdd = 0.7 from (0:inf);
+    parameter real vth = vdd / 2.0;              // data and clock threshold
+    parameter real tt = 10.0e-12 from (0:inf);   // output rise/fall time
+    parameter integer init_q0 = 0 from [0:1];
+    parameter integer init_q1 = 0 from [0:1];
+
+    integer held, b0, b1;
+
+    analog begin
+        @(initial_step) begin
+            held = init_q0;
+            b0 = init_q0;
+            b1 = init_q1;
+        end
+
+        @(cross(V(clk) - vth, +1))
+            held = V(d) > vth;
+
+        @(cross(V(clk) - vth, -1)) begin
+            b0 = held;
+            b1 = V(d) > vth;
+        end
+
+        V(q0) <+ vdd * transition(b0, 0, tt);
+        V(q1) <+ vdd * transition(b1, 0, tt);
+    end
+endmodule
+`endif
