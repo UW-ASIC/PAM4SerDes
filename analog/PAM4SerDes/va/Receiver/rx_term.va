@@ -1,0 +1,23 @@
+`include "disciplines.vams"
+
+//! analysis tran
+//! time 0, 2e-12, 4e-12, 6e-12, 8e-12, 10e-12
+//! wave V(rx_p) = 0.9, 1.0
+//! bias V(rx_n) = 0.9, V(vref) = 0.9
+//! solve
+
+module rx_term(rx_p, rx_n, vref);
+    inout rx_p, rx_n, vref;
+    electrical rx_p, rx_n, vref;
+
+    parameter real rterm = 100.0 from (0:inf);
+    parameter real cesd = 50e-15 from [0:inf);
+
+
+    analog begin
+        // Implement the differential termination current
+        I(rx_p, rx_n) <+ ((V(rx_p)-V(rx_n))/rterm);
+        I(rx_p, vref) <+ cesd *ddt(V(rx_p, vref));
+        I(rx_n, vref) <+ cesd *ddt(V(rx_n, vref));
+    end
+endmodule

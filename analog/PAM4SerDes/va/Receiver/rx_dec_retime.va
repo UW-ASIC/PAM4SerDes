@@ -1,0 +1,47 @@
+`include "disciplines.vams"
+
+//! analysis tran
+//! time 0, 1e-12, 2e-12, 3e-12, 4e-12, 5e-12, 6e-12, 7e-12, 8e-12, 9e-12
+//! wave V(clk) = 0, 1, 0, 0, 1, 0, 0, 1, 0, 0
+//! wave V(msb_in) = 1, 1, 0, 0, 0, 1, 1, 1, 0, 0
+//! wave V(lsb_in) = 0, 0, 1, 1, 1, 0, 0, 1, 1, 1
+//! solve
+//! print none
+
+module rx_dec_retime(msb_in, lsb_in, clk, msb_out, lsb_out);
+
+    input msb_in, lsb_in, clk;
+    output msb_out, lsb_out;
+
+    electrical msb_in, lsb_in, clk;
+    electrical msb_out, lsb_out;
+
+    parameter real vlogic = 1.0 from (0:inf);
+    parameter real vth = 0.5;
+
+    integer msb_state;
+    integer lsb_state;
+
+    analog begin
+        $strobe("t=%g clk=%g MSB=%g LSB=%g",
+        $abstime, V(clk), V(msb_out), V(lsb_out));
+        
+        @(initial_step) begin
+            msb_state = 0;
+            lsb_state = 0;
+        end
+
+        // Detect the rising edge of the clock
+        @(cross(V(clk) - vth, +1)) begin
+            msb_state = (V(msb_in) > vth);
+            lsb_state = (V(lsb_in) > vth);
+        end
+
+        // Sample the MSB and LSB inputs
+        V(msb_out) <+ msb_state * vlogic;
+        V(lsb_out) <+ lsb_state * vlogic;
+
+        // Drive the corresponding output voltages
+
+    end
+endmodule
