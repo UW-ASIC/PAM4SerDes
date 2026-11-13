@@ -1,0 +1,72 @@
+`include "disciplines.vams"
+`include "constants.vams"
+
+//! analysis tran
+//! time 0, 0.5e-12, 1e-12, 1.5e-12, 2e-12, 2.5e-12, 3e-12, 3.5e-12, 4e-12, 4.5e-12, 5e-12, 5.5e-12, 6e-12, 6.5e-12, 7e-12, 7.5e-12, 8e-12
+//! wave V(in_p) = 0.9, 1.0
+//! bias V(in_n) = 0.9, V(vctrl) = 1.0
+//! solve
+//! print none
+
+module vga(in_p, in_n, vctrl, out_p, out_n);
+  input in_p, in_n, vctrl;
+  output out_p, out_n;
+
+  electrical in_p, in_n, out_p, out_n; 
+  electrical vctrl;
+
+  parameter real r_in = 1.0e9; 
+  parameter real r_out = 0.0;
+  parameter real min_gain_db = -4.703;
+  parameter real max_gain_db = -1.847;
+  parameter real v_max = 1.0;
+  parameter real v_min = 0.0;
+  parameter real common_mode = 0.9;
+  parameter real fp = 39.16e9 from (0:inf);
+  parameter real vout_limit = 0.2;
+  
+  real db_gain;
+  real linear_gain;
+  real in_diff;
+  real ctrl_limited;
+  real filtered_diff;
+  real wp;
+  real out_diff_ideal;
+  real out_diff_limited;
+
+  analog begin
+
+    $strobe("t = %g, Vout_diff = %g",
+        $abstime, V(out_p, out_n));
+
+    wp = 2.0 * `M_PI * fp;
+    if (V(vctrl) < v_min)
+      ctrl_limited = v_min;
+    else if (V(vctrl) > v_max)
+      ctrl_limited = v_max;
+    else
+      ctrl_limited = V(vctrl);
+
+    db_gain = min_gain_db + ((max_gain_db - min_gain_db)/(v_max - v_min)) * (ctrl_limited - v_min);
+    linear_gain = pow(10.0, db_gain / 20.0);
+    in_diff = (V(in_p)-V(in_n));
+
+    filtered_diff = laplace_nd(
+    in_diff,
+    '{1.0},
+    '{1.0, 1.0/wp});
+
+    out_diff_ideal = linear_gain * filtered_diff;
+
+    if (out_diff_ideal < -vout_limit)
+        out_diff_limited = -vout_limit;
+    else if (out_diff_ideal > vout_limit)
+        out_diff_limited = vout_limit;
+    else
+        out_diff_limited = out_diff_ideal;
+
+    V(out_p) <+ common_mode + out_diff_limited / 2.0;
+    V(out_n) <+ common_mode - out_diff_limited / 2.0;
+    
+  end
+endmodule
