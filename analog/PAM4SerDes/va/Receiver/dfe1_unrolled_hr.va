@@ -1,0 +1,234 @@
+// dfe1_unrolled_hr - 1-tap unrolled decision feedback equalizer, high resolution.
+//
+// Received signal model: r[n] = x[n] + alpha * x[n-1]
+// An unrolled DFE never subtracts the tail. Instead the slicers compare r[n] against thresholds pre-shifted for every possible previous level, 
+// and this block picks the result whose assumption was true. 
+// The tap weight therefore lives in the thresholds, and this block does two jobs:
+//
+// 1. Generates the 24 slicer references as exact real values (differential):
+// - ref<g> = T_k + alpha * L_h
+// - T_k = {-1, 0, +1} * v_thr (k = threshold)
+// - L_h = {-3, -1, +1, +3} * v_level (h = hypothesis)
+// 2. Picks, per phase, the 3 candidates whose hypothesis h equals the level the
+//    OTHER phase decided one UI earlier (that phase holds symbol n-1).
+//
+// Interface the slicers must meet:
+// - index g = 12 * phase + 3 * hypothesis + threshold        (ref and cand pins)
+// - cand<g> is high (differential > 0) when the input is above ref<g>
+// - phase 0 samples on the rising clock edge, phase 1 on the falling edge
+// - candidates hold until that phase's next sample
+// 
+// Output index: 3 * phase + threshold, thermometer code A, B, C (-v_thr, 0, +v_thr).
+//
+// Timing: each phase is a master-slave flip-flop on the selected candidates.
+// - phase 0: master transparent clk high, slave clk low -> updates on the falling edge
+// - phase 1: master transparent clk low, slave clk high -> updates on the rising edge
+// So phase 0's candidates (sampled on a rising edge) are selected one UI later,
+// and each phase reads the other's slave while that slave is holding: no race in the loop.
+//
+// Selection without logic gates: with the other phase's thermometer bits a, b, c in
+// - {0, 1}, the one-hot hypothesis weights are
+// - w0 = 1 - a,  w1 = a - b,  w2 = b - c,  w3 = c and the selected bit is sum_h w_h * cand(h).
+`ifndef DFE1_UNROLLED_HR_VA
+`define DFE1_UNROLLED_HR_VA
+`include "disciplines.vams"
+
+// x tracks tgt while s = 1, holds and regenerates while s = 0.
+`define LATCH(x, s, tgt, off) \
+    I(x) <+ ddt(tau * V(x)) + (s) * (V(x) - (tgt)) \
+          + (1.0 - (s)) * (V(x) - tanh((V(x) - (off)) / eps_hold));
+
+module dfe1_unrolled_hr(clk_p, clk_n, cand_p0, cand_p1, cand_p2, cand_p3, cand_p4,
+        cand_p5, cand_p6, cand_p7, cand_p8, cand_p9, cand_p10, cand_p11, cand_p12,
+        cand_p13, cand_p14, cand_p15, cand_p16, cand_p17, cand_p18, cand_p19, cand_p20,
+        cand_p21, cand_p22, cand_p23, cand_n0, cand_n1, cand_n2, cand_n3, cand_n4,
+        cand_n5, cand_n6, cand_n7, cand_n8, cand_n9, cand_n10, cand_n11, cand_n12,
+        cand_n13, cand_n14, cand_n15, cand_n16, cand_n17, cand_n18, cand_n19, cand_n20,
+        cand_n21, cand_n22, cand_n23, ref_p0, ref_p1, ref_p2, ref_p3, ref_p4, ref_p5,
+        ref_p6, ref_p7, ref_p8, ref_p9, ref_p10, ref_p11, ref_p12, ref_p13, ref_p14,
+        ref_p15, ref_p16, ref_p17, ref_p18, ref_p19, ref_p20, ref_p21, ref_p22,
+        ref_p23, ref_n0, ref_n1, ref_n2, ref_n3, ref_n4, ref_n5, ref_n6, ref_n7,
+        ref_n8, ref_n9, ref_n10, ref_n11, ref_n12, ref_n13, ref_n14, ref_n15, ref_n16,
+        ref_n17, ref_n18, ref_n19, ref_n20, ref_n21, ref_n22, ref_n23, therm_p0,
+        therm_p1, therm_p2, therm_p3, therm_p4, therm_p5, therm_n0, therm_n1, therm_n2,
+        therm_n3, therm_n4, therm_n5);
+    input clk_p, clk_n, cand_p0, cand_p1, cand_p2, cand_p3, cand_p4, cand_p5, cand_p6,
+        cand_p7, cand_p8, cand_p9, cand_p10, cand_p11, cand_p12, cand_p13, cand_p14,
+        cand_p15, cand_p16, cand_p17, cand_p18, cand_p19, cand_p20, cand_p21, cand_p22,
+        cand_p23, cand_n0, cand_n1, cand_n2, cand_n3, cand_n4, cand_n5, cand_n6,
+        cand_n7, cand_n8, cand_n9, cand_n10, cand_n11, cand_n12, cand_n13, cand_n14,
+        cand_n15, cand_n16, cand_n17, cand_n18, cand_n19, cand_n20, cand_n21, cand_n22,
+        cand_n23;
+    output ref_p0, ref_p1, ref_p2, ref_p3, ref_p4, ref_p5, ref_p6, ref_p7, ref_p8,
+        ref_p9, ref_p10, ref_p11, ref_p12, ref_p13, ref_p14, ref_p15, ref_p16, ref_p17,
+        ref_p18, ref_p19, ref_p20, ref_p21, ref_p22, ref_p23, ref_n0, ref_n1, ref_n2,
+        ref_n3, ref_n4, ref_n5, ref_n6, ref_n7, ref_n8, ref_n9, ref_n10, ref_n11,
+        ref_n12, ref_n13, ref_n14, ref_n15, ref_n16, ref_n17, ref_n18, ref_n19,
+        ref_n20, ref_n21, ref_n22, ref_n23, therm_p0, therm_p1, therm_p2, therm_p3,
+        therm_p4, therm_p5, therm_n0, therm_n1, therm_n2, therm_n3, therm_n4, therm_n5;
+    electrical clk_p, clk_n, cand_p0, cand_p1, cand_p2, cand_p3, cand_p4, cand_p5,
+        cand_p6, cand_p7, cand_p8, cand_p9, cand_p10, cand_p11, cand_p12, cand_p13,
+        cand_p14, cand_p15, cand_p16, cand_p17, cand_p18, cand_p19, cand_p20, cand_p21,
+        cand_p22, cand_p23, cand_n0, cand_n1, cand_n2, cand_n3, cand_n4, cand_n5,
+        cand_n6, cand_n7, cand_n8, cand_n9, cand_n10, cand_n11, cand_n12, cand_n13,
+        cand_n14, cand_n15, cand_n16, cand_n17, cand_n18, cand_n19, cand_n20, cand_n21,
+        cand_n22, cand_n23, ref_p0, ref_p1, ref_p2, ref_p3, ref_p4, ref_p5, ref_p6,
+        ref_p7, ref_p8, ref_p9, ref_p10, ref_p11, ref_p12, ref_p13, ref_p14, ref_p15,
+        ref_p16, ref_p17, ref_p18, ref_p19, ref_p20, ref_p21, ref_p22, ref_p23, ref_n0,
+        ref_n1, ref_n2, ref_n3, ref_n4, ref_n5, ref_n6, ref_n7, ref_n8, ref_n9,
+        ref_n10, ref_n11, ref_n12, ref_n13, ref_n14, ref_n15, ref_n16, ref_n17,
+        ref_n18, ref_n19, ref_n20, ref_n21, ref_n22, ref_n23, therm_p0, therm_p1,
+        therm_p2, therm_p3, therm_p4, therm_p5, therm_n0, therm_n1, therm_n2, therm_n3,
+        therm_n4, therm_n5;
+    electrical m0_a, m0_b, m0_c, s0_a, s0_b, s0_c, m1_a, m1_b, m1_c, s1_a, s1_b, s1_c;
+
+    parameter real vdd = 1.0 from (0:inf);
+    parameter real v_swing = 0.300 from (0:inf);
+    parameter real v_cm = vdd - v_swing / 2.0;
+    parameter real alpha = 0.08548; // first post-cursor / main cursor
+    parameter real v_level = 50.0e-3 from (0:inf); // levels are {-3,-1,+1,+3} * v_level
+    parameter real v_thr = 100.0e-3 from (0:inf); // thresholds are {-1,0,+1} * v_thr
+    parameter real tau = 0.1e-12 from (0:inf); // latch time constant
+    parameter real eps_in = 1.0e-3 from (0:inf); // comparator softness [V]
+    parameter real eps_clk = 1.0e-3 from (0:inf);
+    parameter real eps_hold = 0.05 from (0:inf);
+    parameter integer init_level = 0 from [0:3]; // assumed level before the first symbol
+
+    real hi, lo, off_a, off_b, off_c;
+    real c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16, c17, c18, c19, c20, c21, c22, c23;
+    real w0_0, w0_1, w0_2, w0_3, w1_0, w1_1, w1_2, w1_3;
+    real sel0_a, sel0_b, sel0_c, sel1_a, sel1_b, sel1_c;
+
+    analog begin
+        // Bias each holding latch's DC solution toward init_level's thermometer code.
+        off_a = 0.5 - (init_level > 0);
+        off_b = 0.5 - (init_level > 1);
+        off_c = 0.5 - (init_level > 2);
+
+        hi = 0.5 * (1.0 + tanh(V(clk_p, clk_n) / eps_clk));
+        lo = 1.0 - hi;
+
+        // Slicer references: T_k + alpha * L_h.
+        V(ref_p0) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (-3) * v_level);
+        V(ref_n0) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (-3) * v_level);
+        V(ref_p1) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (-3) * v_level);
+        V(ref_n1) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (-3) * v_level);
+        V(ref_p2) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (-3) * v_level);
+        V(ref_n2) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (-3) * v_level);
+        V(ref_p3) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (-1) * v_level);
+        V(ref_n3) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (-1) * v_level);
+        V(ref_p4) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (-1) * v_level);
+        V(ref_n4) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (-1) * v_level);
+        V(ref_p5) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (-1) * v_level);
+        V(ref_n5) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (-1) * v_level);
+        V(ref_p6) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (+1) * v_level);
+        V(ref_n6) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (+1) * v_level);
+        V(ref_p7) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (+1) * v_level);
+        V(ref_n7) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (+1) * v_level);
+        V(ref_p8) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (+1) * v_level);
+        V(ref_n8) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (+1) * v_level);
+        V(ref_p9) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (+3) * v_level);
+        V(ref_n9) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (+3) * v_level);
+        V(ref_p10) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (+3) * v_level);
+        V(ref_n10) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (+3) * v_level);
+        V(ref_p11) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (+3) * v_level);
+        V(ref_n11) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (+3) * v_level);
+        V(ref_p12) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (-3) * v_level);
+        V(ref_n12) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (-3) * v_level);
+        V(ref_p13) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (-3) * v_level);
+        V(ref_n13) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (-3) * v_level);
+        V(ref_p14) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (-3) * v_level);
+        V(ref_n14) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (-3) * v_level);
+        V(ref_p15) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (-1) * v_level);
+        V(ref_n15) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (-1) * v_level);
+        V(ref_p16) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (-1) * v_level);
+        V(ref_n16) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (-1) * v_level);
+        V(ref_p17) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (-1) * v_level);
+        V(ref_n17) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (-1) * v_level);
+        V(ref_p18) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (+1) * v_level);
+        V(ref_n18) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (+1) * v_level);
+        V(ref_p19) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (+1) * v_level);
+        V(ref_n19) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (+1) * v_level);
+        V(ref_p20) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (+1) * v_level);
+        V(ref_n20) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (+1) * v_level);
+        V(ref_p21) <+ v_cm + 0.5 * (-1 * v_thr + alpha * (+3) * v_level);
+        V(ref_n21) <+ v_cm - 0.5 * (-1 * v_thr + alpha * (+3) * v_level);
+        V(ref_p22) <+ v_cm + 0.5 * (+0 * v_thr + alpha * (+3) * v_level);
+        V(ref_n22) <+ v_cm - 0.5 * (+0 * v_thr + alpha * (+3) * v_level);
+        V(ref_p23) <+ v_cm + 0.5 * (+1 * v_thr + alpha * (+3) * v_level);
+        V(ref_n23) <+ v_cm - 0.5 * (+1 * v_thr + alpha * (+3) * v_level);
+
+        // Candidates, normalised to +-1.
+        c0 = tanh(V(cand_p0, cand_n0) / eps_in);
+        c1 = tanh(V(cand_p1, cand_n1) / eps_in);
+        c2 = tanh(V(cand_p2, cand_n2) / eps_in);
+        c3 = tanh(V(cand_p3, cand_n3) / eps_in);
+        c4 = tanh(V(cand_p4, cand_n4) / eps_in);
+        c5 = tanh(V(cand_p5, cand_n5) / eps_in);
+        c6 = tanh(V(cand_p6, cand_n6) / eps_in);
+        c7 = tanh(V(cand_p7, cand_n7) / eps_in);
+        c8 = tanh(V(cand_p8, cand_n8) / eps_in);
+        c9 = tanh(V(cand_p9, cand_n9) / eps_in);
+        c10 = tanh(V(cand_p10, cand_n10) / eps_in);
+        c11 = tanh(V(cand_p11, cand_n11) / eps_in);
+        c12 = tanh(V(cand_p12, cand_n12) / eps_in);
+        c13 = tanh(V(cand_p13, cand_n13) / eps_in);
+        c14 = tanh(V(cand_p14, cand_n14) / eps_in);
+        c15 = tanh(V(cand_p15, cand_n15) / eps_in);
+        c16 = tanh(V(cand_p16, cand_n16) / eps_in);
+        c17 = tanh(V(cand_p17, cand_n17) / eps_in);
+        c18 = tanh(V(cand_p18, cand_n18) / eps_in);
+        c19 = tanh(V(cand_p19, cand_n19) / eps_in);
+        c20 = tanh(V(cand_p20, cand_n20) / eps_in);
+        c21 = tanh(V(cand_p21, cand_n21) / eps_in);
+        c22 = tanh(V(cand_p22, cand_n22) / eps_in);
+        c23 = tanh(V(cand_p23, cand_n23) / eps_in);
+
+        // Phase 0: hypothesis weights from phase 1's held decision.
+        w0_0 = 1.0 - 0.5 * (1.0 + V(s1_a));
+        w0_1 = 0.5 * (1.0 + V(s1_a)) - 0.5 * (1.0 + V(s1_b));
+        w0_2 = 0.5 * (1.0 + V(s1_b)) - 0.5 * (1.0 + V(s1_c));
+        w0_3 = 0.5 * (1.0 + V(s1_c));
+        sel0_a = w0_0 * c0 + w0_1 * c3 + w0_2 * c6 + w0_3 * c9;
+        sel0_b = w0_0 * c1 + w0_1 * c4 + w0_2 * c7 + w0_3 * c10;
+        sel0_c = w0_0 * c2 + w0_1 * c5 + w0_2 * c8 + w0_3 * c11;
+
+        // Phase 1: hypothesis weights from phase 0's held decision.
+        w1_0 = 1.0 - 0.5 * (1.0 + V(s0_a));
+        w1_1 = 0.5 * (1.0 + V(s0_a)) - 0.5 * (1.0 + V(s0_b));
+        w1_2 = 0.5 * (1.0 + V(s0_b)) - 0.5 * (1.0 + V(s0_c));
+        w1_3 = 0.5 * (1.0 + V(s0_c));
+        sel1_a = w1_0 * c12 + w1_1 * c15 + w1_2 * c18 + w1_3 * c21;
+        sel1_b = w1_0 * c13 + w1_1 * c16 + w1_2 * c19 + w1_3 * c22;
+        sel1_c = w1_0 * c14 + w1_1 * c17 + w1_2 * c20 + w1_3 * c23;
+
+        // Phase 0 updates on the falling edge, phase 1 on the rising edge.
+        `LATCH(m0_a, hi, sel0_a, off_a)
+        `LATCH(s0_a, lo, V(m0_a), off_a)
+        `LATCH(m0_b, hi, sel0_b, off_b)
+        `LATCH(s0_b, lo, V(m0_b), off_b)
+        `LATCH(m0_c, hi, sel0_c, off_c)
+        `LATCH(s0_c, lo, V(m0_c), off_c)
+        `LATCH(m1_a, lo, sel1_a, off_a)
+        `LATCH(s1_a, hi, V(m1_a), off_a)
+        `LATCH(m1_b, lo, sel1_b, off_b)
+        `LATCH(s1_b, hi, V(m1_b), off_b)
+        `LATCH(m1_c, lo, sel1_c, off_c)
+        `LATCH(s1_c, hi, V(m1_c), off_c)
+
+        // Thermometer outputs; each leg swings v_cm +- v_swing / 2.
+        V(therm_p0) <+ v_cm + 0.5 * v_swing * V(s0_a);
+        V(therm_n0) <+ v_cm - 0.5 * v_swing * V(s0_a);
+        V(therm_p1) <+ v_cm + 0.5 * v_swing * V(s0_b);
+        V(therm_n1) <+ v_cm - 0.5 * v_swing * V(s0_b);
+        V(therm_p2) <+ v_cm + 0.5 * v_swing * V(s0_c);
+        V(therm_n2) <+ v_cm - 0.5 * v_swing * V(s0_c);
+        V(therm_p3) <+ v_cm + 0.5 * v_swing * V(s1_a);
+        V(therm_n3) <+ v_cm - 0.5 * v_swing * V(s1_a);
+        V(therm_p4) <+ v_cm + 0.5 * v_swing * V(s1_b);
+        V(therm_n4) <+ v_cm - 0.5 * v_swing * V(s1_b);
+        V(therm_p5) <+ v_cm + 0.5 * v_swing * V(s1_c);
+        V(therm_n5) <+ v_cm - 0.5 * v_swing * V(s1_c);
+    end
+endmodule
+`endif
