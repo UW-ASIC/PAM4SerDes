@@ -16,7 +16,7 @@
 
 module dcc_cml(clk_in, clk_outp, clk_outn, vss);
 
-    input clk_in; // CML transistor level implementation will require differential input
+    input clk_in; 		// CML transistor level implementation will require differential input
     output clk_outp, clk_outn;	// differential output - need to confirm
     inout vss;
 

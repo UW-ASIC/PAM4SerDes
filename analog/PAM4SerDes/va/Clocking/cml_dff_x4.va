@@ -6,7 +6,18 @@
 // No reset or enable is included because neither is specified in the available project notes.
 
 
-module cml_dff_x4(clk_p, clk_n, d0_p, d0_n, d1_p, d1_n, d2_p, d2_n, d3_p, d3_n, q0_p, q0_n, q1_p, q1_n, q2_p, q2_n, q3_p, q3_n);
+module cml_dff_x4(
+	clk_p, clk_n, 
+	d0_p, d0_n, 
+	d1_p, d1_n, 
+	d2_p, d2_n, 
+	d3_p, d3_n, 
+	q0_p, q0_n, 
+	q1_p, q1_n, 
+	q2_p, q2_n, 
+	q3_p, q3_n
+);
+
 input clk_p, clk_n; electrical clk_p, clk_n;
 input d0_p, d0_n; electrical d0_p, d0_n;
 input d1_p, d1_n; electrical d1_p, d1_n;
@@ -19,14 +30,17 @@ output q3_p, q3_n; electrical q3_p, q3_n;
 
 // Illustrative defaults only; replace with the actual CML interface levels.
 parameter real vcm = 0.6;
-parameter real vdiff = 0.2 from (0:inf);
+parameter real vdiff = 0.2 from [0:inf);
 parameter real vclk_diff_th = 0.0;
 parameter real vdata_diff_th = 0.0;
-parameter real t_cq = 5p from (0:inf);
-parameter real t_rise = 1p from (0:inf);
-parameter real t_fall = 1p from (0:inf);
+
+parameter real t_propogation = 0 from [0:inf);
+parameter real t_rise = 0 from [0:inf);
+parameter real t_fall = 0 from [0:inf);
+
 integer state[0:3];
 integer i;
+
 analog begin
     @(initial_step) begin
         for (i = 0; i < 4; i = i + 1) state[i] = 0;
@@ -37,13 +51,13 @@ analog begin
         state[2] = (V(d2_p, d2_n) >= vdata_diff_th) ? 1 : 0;
         state[3] = (V(d3_p, d3_n) >= vdata_diff_th) ? 1 : 0;
     end
-    V(q0_p) <+ transition(vcm + (state[0] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
-    V(q0_n) <+ transition(vcm - (state[0] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
-    V(q1_p) <+ transition(vcm + (state[1] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
-    V(q1_n) <+ transition(vcm - (state[1] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
-    V(q2_p) <+ transition(vcm + (state[2] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
-    V(q2_n) <+ transition(vcm - (state[2] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
-    V(q3_p) <+ transition(vcm + (state[3] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
-    V(q3_n) <+ transition(vcm - (state[3] ? 0.5*vdiff : -0.5*vdiff), t_cq, t_rise, t_fall);
+    V(q0_p) <+ transition(vcm + (state[0] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
+    V(q0_n) <+ transition(vcm - (state[0] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
+    V(q1_p) <+ transition(vcm + (state[1] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
+    V(q1_n) <+ transition(vcm - (state[1] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
+    V(q2_p) <+ transition(vcm + (state[2] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
+    V(q2_n) <+ transition(vcm - (state[2] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
+    V(q3_p) <+ transition(vcm + (state[3] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
+    V(q3_n) <+ transition(vcm - (state[3] ? 0.5*vdiff : -0.5*vdiff), t_propogation, t_rise, t_fall);
 end
 endmodule
