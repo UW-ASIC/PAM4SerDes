@@ -1,0 +1,38 @@
+// Voltage Controlled Oscillator (VCO) 
+// mathematically:  f_osc = f(V_ctrl)
+// typically:       f_osc = f_0 + K_VCO * V_ctrl
+//    f_0   -> center frequency
+//    K_VCO -> gain of the VCO (Hz/V)
+//
+// phase = [idt(f_osc) + p_init] mod 2*pi
+
+//! solve 
+//! print none
+
+`include "constants.vams"
+`include "disciplines.vams"
+
+module vco(v_ctrl, v_out, vdd, gnd);
+    input v_ctrl, vdd, gnd;
+    output v_out;
+    electrical v_ctrl, v_out;
+
+    parameter real f_0      = 5e9 from (0:inf); // center frequency
+    parameter real v_c0     = 0;                // V_ctrl that gives f_0
+    parameter real k_vco    = 2e9;              // gain
+    parameter real p_init   = 0;                // initial phase
+    parameter real v_amp    = 1 from (0:vdd);   // output peak amplitude
+
+    real frequency, phase;
+
+    analog begin
+        frequency = f_0 + k_vco * (V(v_ctrl, gnd) - v_c0);
+
+        //Angular frequency to phase formula, in Razavi page 646
+        phase = 2 * `M_PI * idtmod(frequency, p_init/(2 * `M_PI), 1);
+
+        V(v_out) <+ v_amp*sin(phase);
+
+        $bound_step(0.1/frequency);
+    end
+endmodule
