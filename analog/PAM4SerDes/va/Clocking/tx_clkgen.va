@@ -1,0 +1,44 @@
+// Transmitter clock generator. Structural block, instantiates the clock-tree cells 
+// and adds no behaviour of its own.
+//
+// clkbuf_cml and div2_tspc are the target blocks of the same names. dcc_cml, div2_cml,
+// cml2cmos and phase_aligner are ideal placeholders for now (may need to rework if real
+// blocks are different).
+
+`ifndef PAM4_TX_CLKGEN_VA
+`define PAM4_TX_CLKGEN_VA
+
+`include "disciplines.vams"
+`include "clkbuf_cml.va"
+`include "div2_tspc.va"
+`include "dcc_cml.va"
+`include "div2_cml.va"
+`include "cml2cmos.va"
+`include "phase_aligner.va"
+
+module tx_clkgen(ckin_p, ckin_n, rst, pa_code, clk14_p, clk14_n, clk7_p, clk7_n,
+                 clk3p5, clk3p5b, clk1p75, clk0p875, vdd, vss);
+  input ckin_p, ckin_n, rst;
+  input [4:0] pa_code;
+  output clk14_p, clk14_n, clk7_p, clk7_n, clk3p5, clk3p5b, clk1p75, clk0p875;
+  inout vdd, vss;
+  electrical ckin_p, ckin_n, rst, clk14_p, clk14_n, clk7_p, clk7_n;
+  electrical clk3p5, clk3p5b, clk1p75, clk0p875, vdd, vss;
+  electrical [4:0] pa_code;
+  electrical dccp, dccn, c7, c7a, q1p75b, q0p875b;
+
+  (* desc = "scale of the added jitter of every cell: 1 = their defaults, 0 = none" *)
+  parameter real rj_scale = 1 from [0:10];
+
+  dcc_cml #(.rj(60f * rj_scale), .rj_seed(501)) u_dcc(.inp(ckin_p), .inn(ckin_n), .outp(dccp), .outn(dccn), .vdd(vdd), .vss(vss));
+  clkbuf_cml #(.rj(40f * rj_scale), .rj_seed(601)) u_buf14(.inp(dccp), .inn(dccn), .outp(clk14_p), .outn(clk14_n), .vdd(vdd), .vss(vss));
+  div2_cml #(.rj(40f * rj_scale), .rj_seed(701)) u_div7(.inp(clk14_p), .inn(clk14_n), .outp(clk7_p), .outn(clk7_n), .vdd(vdd), .vss(vss));
+  cml2cmos #(.rj(60f * rj_scale), .rj_seed(801)) u_c2c(.inp(clk7_p), .inn(clk7_n), .out(c7), .vdd(vdd), .vss(vss));
+  // pa_code is written out bit by bit, VerA 0.12.1 refuses .pa_code(pa_code) when the instance above ties this port with a concatenation
+  phase_aligner #(.rj(50f * rj_scale), .rj_seed(901)) u_pa(.ckin(c7), .ckout(c7a), .pa_code({pa_code[4], pa_code[3], pa_code[2], pa_code[1], pa_code[0]}), .vdd(vdd), .vss(vss));
+  div2_tspc #(.rj(300f * rj_scale), .rj_seed(301)) u_d3p5(.clk(c7a), .rst(rst), .q(clk3p5), .qb(clk3p5b), .vdd(vdd), .vss(vss));
+  div2_tspc #(.rj(300f * rj_scale), .rj_seed(302)) u_d1p75(.clk(clk3p5), .rst(rst), .q(clk1p75), .qb(q1p75b), .vdd(vdd), .vss(vss));
+  div2_tspc #(.rj(300f * rj_scale), .rj_seed(303)) u_d0p875(.clk(clk1p75), .rst(rst), .q(clk0p875), .qb(q0p875b), .vdd(vdd), .vss(vss));
+endmodule
+
+`endif

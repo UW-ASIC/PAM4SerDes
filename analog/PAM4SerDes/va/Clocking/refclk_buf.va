@@ -1,0 +1,87 @@
+// Receives external 437.5 MHz reference clock and drives a rail-to-rail
+// CMOS copy of it. Two instances of this block, one for TX one for RX.
+
+`include "disciplines.vams"
+
+module refclk_buf(ckin_p, ckin_n, ckref, vdd, vss);
+  input ckin_p, ckin_n;
+  output ckref;
+  inout vdd, vss;
+  electrical ckin_p, ckin_n, ckref, vdd, vss;
+  electrical drv; // ideal driver output, behind rout
+
+  (* desc = "differential input termination", units = "Ohm" *)
+  parameter real rterm = 100 from (0:inf);
+  (* desc = "receiver offset", units = "V" *)
+  parameter real vos = 0 from [-0.1:0.1];
+  (* desc = "receiver hysteresis, full width", units = "V" *)
+  parameter real vhys = 20m from [0:0.2];
+  (* desc = "delay from input threshold crossing to output 50 %", units = "s" *)
+  parameter real tpd = 50p from (0:1n);
+  (* desc = "output edge duration, 0 to 100 %", units = "s" *)
+  parameter real trf = 30p from (0:1n);
+  (* desc = "added random jitter per edge, rms", units = "s" *)
+  parameter real rj = 100f from [0:10p];
+  (* desc = "seed of the jitter sequence" *)
+  parameter integer rj_seed = 1;
+  (* desc = "output driver resistance", units = "Ohm" *)
+  parameter real rout = 100 from [0:inf);
+
+  real vd, th_r, th_f, x_r, x_f, t50, y;
+  integer st, st0, seed;
+
+  analog begin
+    vd = V(ckin_p, ckin_n);
+    th_r = vos + 0.5 * vhys;
+    th_f = vos - 0.5 * vhys;
+
+    I(ckin_p, ckin_n) <+ vd / rterm;
+
+    x_r = last_crossing(vd - th_r, +1);
+    x_f = last_crossing(th_f - vd, +1);
+    
+    // No edge yet, output at st
+    @(initial_step) begin
+      seed = rj_seed;
+      st = (vd > vos) ? 1 : 0;
+      st0 = st;
+      t50 = -1; 
+    end
+
+    // Rising
+    @(above(vd - th_r)) begin
+      if (st == 0) begin
+        st0 = 0;
+        st = 1;
+        if (analysis("static"))
+          t50 = -1;
+        else
+          t50 = (x_r >= 0 ? x_r : $abstime) + tpd + rj * $rdist_normal(seed, 0, 1);
+      end
+    end
+
+    // Falling
+    @(above(th_f - vd)) begin
+      if (st == 1) begin
+        st0 = 1;
+        st = 0;
+        if (analysis("static"))
+          t50 = -1;
+        else
+          t50 = (x_f >= 0 ? x_f : $abstime) + tpd + rj * $rdist_normal(seed, 0, 1);
+      end
+    end
+
+    // Breakpoints
+    @(timer(t50 - 0.5 * trf)) ;
+    @(timer(t50 + 0.5 * trf)) ;
+
+    // Setting output
+    y = st0 + (st - st0) * min(max(($abstime - t50) / trf + 0.5, 0.0), 1.0);
+    V(drv, vss) <+ y * V(vdd, vss);
+    if (rout > 0)
+      I(drv, ckref) <+ V(drv, ckref) / rout;
+    else
+      V(drv, ckref) <+ 0;
+  end
+endmodule

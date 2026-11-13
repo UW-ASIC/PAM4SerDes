@@ -1,0 +1,124 @@
+// Divide-by-2 in true single-phase clock (TSPC) logic. Goes to clock trees for
+// the mux/demux trees. Converts 7 Ghz to 3.5, 1.75 and 0.875 GHz
+
+`include "disciplines.vams"
+
+module div2_tspc(clk, rst, q, qb, vdd, vss);
+  input clk, rst;
+  output q, qb;
+  inout vdd, vss;
+  electrical clk, rst, q, qb, vdd, vss;
+  electrical dq, dqb; // ideal driver outputs, behind rout
+
+  (* desc = "delay from clock 50 % to rising q 50 %", units = "s" *)
+  parameter real tpd_r = 30p from (0:1n);
+  (* desc = "delay from clock (or rst) 50 % to falling q 50 %", units = "s" *)
+  parameter real tpd_f = 30p from (0:1n);
+  (* desc = "output edge duration, 0 to 100 %", units = "s" *)
+  parameter real trf = 25p from (0:1n);
+  (* desc = "added random jitter per output edge, rms", units = "s" *)
+  parameter real rj = 300f from [0:10p];
+  (* desc = "seed of the jitter sequence; give every instance its own" *)
+  parameter integer rj_seed = 3;
+  (* desc = "output driver resistance, 0 for an ideal source", units = "Ohm" *)
+  parameter real rout = 100 from [0:inf);
+  (* desc = "lowest clock frequency of the specified range, 0 for none", units = "Hz" *)
+  parameter real fmin = 743.75M from [0:inf);
+  (* desc = "highest clock frequency of the specified range", units = "Hz" *)
+  parameter real fmax = 8.05G from (0:inf);
+
+  real vth, vc, vr, x_c, x_r, x_prev, per, t50, y;
+  integer cst, rst_on, st, st0, seed, n_fast, n_slow, n_cyc;
+
+  analog begin
+    vth = 0.5 * V(vdd, vss);
+    vc = V(clk, vss);
+    vr = V(rst, vss);
+
+    // Interpolated times of the latest falling clock and rising rst crossings
+    x_c = last_crossing(vc - vth, -1);
+    x_r = last_crossing(vr - vth, +1);
+
+    @(initial_step) begin
+      seed = rj_seed;
+      cst = (vc > vth) ? 1 : 0;
+      rst_on = (vr > vth) ? 1 : 0;
+      st = 0;
+      st0 = 0;
+      t50 = -1;
+      x_prev = -1;
+    end
+
+    // Reset
+    @(above(vr - vth)) begin
+      rst_on = 1;
+      if (st == 1) begin
+        st0 = 1;
+        st = 0;
+        if (analysis("static"))
+          t50 = -1;
+        else
+          t50 = (x_r >= 0 ? x_r : $abstime) + tpd_f + rj * $rdist_normal(seed, 0, 1);
+      end
+    end
+    @(above(vth - vr))
+      rst_on = 0;
+
+    // Rising
+    @(above(vc - vth))
+      cst = 1;
+
+    // Falling
+    @(above(vth - vc)) begin
+      if (cst == 1) begin
+        cst = 0;
+        if (!analysis("static")) begin
+          if (x_prev >= 0) begin
+            per = x_c - x_prev;
+            n_cyc = n_cyc + 1;
+            if (per < 0.999 / fmax) begin
+              if (n_fast == 0)
+                $warning("div2_tspc: clock period %e s is below 1/fmax at t = %e s", per, $abstime);
+              n_fast = n_fast + 1;
+            end
+            if (fmin > 0 && per > 1.001 / fmin) begin
+              if (n_slow == 0)
+                $warning("div2_tspc: clock period %e s is above 1/fmin at t = %e s", per, $abstime);
+              n_slow = n_slow + 1;
+            end
+          end
+          x_prev = x_c;
+        end
+        if (!rst_on) begin
+          st0 = st;
+          st = 1 - st;
+          if (analysis("static"))
+            t50 = -1;
+          else
+            t50 = (x_c >= 0 ? x_c : $abstime) + (st ? tpd_r : tpd_f) + rj * $rdist_normal(seed, 0, 1);
+        end
+      end
+    end
+
+    // Breakpoints
+    @(timer(t50 - 0.5 * trf)) ;
+    @(timer(t50 + 0.5 * trf)) ;
+
+    @(final_step) begin
+      if (n_fast > 0 || n_slow > 0)
+        $warning("div2_tspc: %0d of %0d clock periods below 1/fmax, %0d above 1/fmin", n_fast, n_cyc, n_slow);
+    end
+
+    // Setting output
+    y = st0 + (st - st0) * min(max(($abstime - t50) / trf + 0.5, 0.0), 1.0);
+    V(dq, vss) <+ y * V(vdd, vss);
+    V(dqb, vss) <+ (1 - y) * V(vdd, vss);
+    if (rout > 0) begin
+      I(dq, q) <+ V(dq, q) / rout;
+      I(dqb, qb) <+ V(dqb, qb) / rout;
+    end else begin
+      V(dq, q) <+ 0;
+      V(dqb, qb) <+ 0;
+    end
+  end
+endmodule

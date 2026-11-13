@@ -1,0 +1,100 @@
+// Lock detector for the TX PLL. Compares rising edges of reference and divided
+// down feedback clock once per reference cycle.
+
+`ifndef PAM4_LOCK_DETECT_VA
+`define PAM4_LOCK_DETECT_VA
+
+`include "disciplines.vams"
+
+module lock_detect(ckref, ckfb, lock, vdd, vss);
+  input ckref, ckfb;
+  output lock;
+  inout vdd, vss;
+  electrical ckref, ckfb, lock, vdd, vss;
+
+  (* desc = "largest phase error that counts towards lock", units = "s" *)
+  parameter real t_win_lock = 30p from (0:inf);
+  (* desc = "phase error above which a cycle counts towards unlock", units = "s" *)
+  parameter real t_win_unlock = 60p from (0:inf);
+  (* desc = "consecutive good cycles needed to assert lock" *)
+  parameter integer n_lock = 256 from [1:inf);
+  (* desc = "consecutive bad cycles needed to drop lock" *)
+  parameter integer n_unlock = 4 from [1:inf);
+  (* desc = "reference idle time that drops lock", units = "s" *)
+  parameter real tmiss = 10n from (0:inf);
+  (* desc = "delay from the deciding event to the output's 50 %", units = "s" *)
+  parameter real tpd = 30p from [0:1n);
+  (* desc = "output edge duration, 0 to 100 %", units = "s" *)
+  parameter real trf = 25p from (0:1n);
+  (* desc = "output driver resistance", units = "Ohm" *)
+  parameter real rout = 100 from (0:inf);
+
+  real vth, x_r, x_fb, t_r, t_fb, t_close, error, t50, y;
+  integer nfb, open, cnt, st, st0;
+
+  analog begin
+    vth = 0.5 * V(vdd, vss);
+    x_r = last_crossing(V(ckref, vss) - vth, +1);
+    x_fb = last_crossing(V(ckfb, vss) - vth, +1);
+
+    @(initial_step) begin
+      t_r = -1;
+      t_fb = -1;
+      t_close = -1;
+      t50 = -1;
+    end
+
+    @(cross(V(ckfb, vss) - vth, +1) or cross(V(ckref, vss) - vth, +1) or timer(t_close)) begin
+      if (x_fb > t_fb) begin
+        t_fb = x_fb;
+        nfb = nfb + 1;
+      end
+      if (x_r > t_r) begin
+        t_r = x_r;
+        t_close = x_r + t_win_unlock;
+        open = 1;
+      end
+      if (open && $abstime >= t_close) begin
+        open = 0;
+        error = abs(t_fb - t_r);
+        if (!st) begin
+          cnt = (nfb == 1 && error <= t_win_lock) ? cnt + 1 : 0;
+          if (cnt >= n_lock) begin
+            st0 = 0;
+            st = 1;
+            cnt = 0;
+            t50 = t_close + tpd;
+          end
+        end else begin
+          cnt = (nfb != 1 || error > t_win_unlock) ? cnt + 1 : 0;
+          if (cnt >= n_unlock) begin
+            st0 = 1;
+            st = 0;
+            cnt = 0;
+            t50 = t_close + tpd;
+          end
+        end
+        nfb = 0;
+      end
+    end
+
+    // Reference watchdog
+    @(timer(t_r + tmiss)) begin
+      cnt = 0;
+      if (st) begin
+        st0 = 1;
+        st = 0;
+        t50 = t_r + tmiss + tpd;
+      end
+    end
+
+    // Breakpoints
+    @(timer(t50 - 0.5 * trf)) ;
+    @(timer(t50 + 0.5 * trf)) ;
+
+    y = st0 + (st - st0) * min(max(($abstime - t50) / trf + 0.5, 0.0), 1.0);
+    I(lock, vss) <+ (V(lock, vss) - y * V(vdd, vss)) / rout;
+  end
+endmodule
+
+`endif

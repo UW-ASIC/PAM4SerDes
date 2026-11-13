@@ -1,0 +1,52 @@
+// Current-mode-logic clock buffer, lives in the clock trees for both the muxes and
+// demuxes. Restores swing and isolates loads.
+
+`ifndef PAM4_CLKBUF_CML_VA
+`define PAM4_CLKBUF_CML_VA
+
+`include "disciplines.vams"
+
+module clkbuf_cml(inp, inn, outp, outn, vdd, vss);
+  input inp, inn;
+  output outp, outn;
+  inout vdd, vss;
+  electrical inp, inn, outp, outn, vdd, vss;
+
+  (* desc = "small-signal differential gain at DC" *)
+  parameter real gain = 2 from (0:inf);
+  (* desc = "saturated differential output amplitude (0.6 Vppd by default)", units = "V" *)
+  parameter real vsw = 0.3 from (0:inf);
+  (* desc = "output time constant", units = "s" *)
+  parameter real tau = 5.707p from (0:inf);
+  (* desc = "input-referred offset", units = "V" *)
+  parameter real vos = 0 from [-0.1:0.1];
+  (* desc = "load resistor on each side", units = "Ohm" *)
+  parameter real rl = 200 from (0:inf);
+  (* desc = "added random jitter per output crossing, rms", units = "s" *)
+  parameter real rj = 40f from [0:1p];
+  (* desc = "seed of the jitter sequence; give every instance its own" *)
+  parameter integer rj_seed = 6;
+
+  real vd, u, y, yo, dj, iss;
+  integer seed;
+
+  analog begin
+    vd = V(inp, inn) - vos;
+    u = vsw * tanh(gain * vd / vsw);
+    y = laplace_nd(u, '{1}, '{1, tau});
+
+    @(initial_step)
+      seed = rj_seed;
+    @(cross(vd, 0))
+      dj = analysis("static") ? 0.0 : rj * $rdist_normal(seed, 0, 1);
+
+    yo = y - dj * (u - y) / tau;
+    iss = vsw / rl;
+    I(vdd, outp) <+ V(vdd, outp) / rl;
+    I(vdd, outn) <+ V(vdd, outn) / rl;
+    I(outp, vss) <+ 0.5 * iss * (1 - yo / vsw);
+    I(outn, vss) <+ 0.5 * iss * (1 + yo / vsw);
+  end
+endmodule
+
+`endif

@@ -1,0 +1,64 @@
+// Transmitter PLL skeleton. Structural block, wires the loop's cells together 
+// and adds no behaviour of its own.
+//
+// div_n and lock_detect are the target blocks of the same names. pfd, charge_pump,
+// loop_filter_rc and vco_cml are ideal placeholders for now (may need to rework if 
+// real blocks are different).
+//
+// ckfb and vctl are monitor outputs: the divided clock and the control voltage.
+
+`ifndef PAM4_TX_PLL_VA
+`define PAM4_TX_PLL_VA
+
+`include "disciplines.vams"
+`include "pfd.va"
+`include "charge_pump.va"
+`include "loop_filter_rc.va"
+`include "vco_cml.va"
+`include "div_n.va"
+`include "lock_detect.va"
+
+module tx_pll(ckref, band, ckp, ckn, ckfb, lock, vctl, vdd, vss);
+  input ckref;
+  input [3:0] band;
+  output ckp, ckn, ckfb, lock, vctl;
+  inout vdd, vss;
+  electrical ckref, ckp, ckn, ckfb, lock, vctl, vdd, vss;
+  electrical [3:0] band;
+  electrical up, dn;
+
+  (* desc = "feedback division ratio" *)
+  parameter integer n = 32 from [2:1023];
+  (* desc = "charge pump current", units = "A" *)
+  parameter real icp = 100u from (0:inf);
+  (* desc = "loop filter resistor", units = "Ohm" *)
+  parameter real r = 25.31k from (0:inf);
+  (* desc = "loop filter integrating capacitor", units = "F" *)
+  parameter real c = 1.427p from (0:inf);
+  (* desc = "loop filter shunt capacitor", units = "F" *)
+  parameter real c2 = 0.14p from [0:inf);
+  (* desc = "initial voltage on c", units = "V" *)
+  parameter real vc0 = 0.35;
+  (* desc = "VCO frequency at band 8 and vctl = 0.35 V", units = "Hz" *)
+  parameter real f0 = 14G from (0:inf);
+  (* desc = "VCO frequency step per band", units = "Hz" *)
+  parameter real fstep = 300M from [0:inf);
+  (* desc = "VCO tuning gain", units = "Hz/V" *)
+  parameter real kvco = 1.4G from [0:inf);
+  (* desc = "feedback divider's added jitter, rms per edge", units = "s" *)
+  parameter real rj_div = 150f from [0:10p];
+  (* desc = "seed of the divider's jitter sequence" *)
+  parameter integer div_seed = 2;
+  (* desc = "good cycles the lock detector needs" *)
+  parameter integer n_lock = 256 from [1:inf);
+
+  pfd u_pfd(.ckref(ckref), .ckfb(ckfb), .up(up), .dn(dn), .vdd(vdd), .vss(vss));
+  charge_pump #(.icp(icp)) u_cp(.up(up), .dn(dn), .out(vctl), .vdd(vdd), .vss(vss));
+  loop_filter_rc #(.r(r), .c(c), .c2(c2), .vc0(vc0)) u_lf(.in(vctl), .vss(vss));
+  // band is written out bit by bit, VerA 0.12.1 refuses .band(band) when the instance above ties this port with a concatenation
+  vco_cml #(.f0(f0), .fstep(fstep), .kvco(kvco)) u_vco(.vctl(vctl), .band({band[3], band[2], band[1], band[0]}), .ckp(ckp), .ckn(ckn), .vdd(vdd), .vss(vss));
+  div_n #(.n(n), .rj(rj_div), .rj_seed(div_seed)) u_div(.ckin_p(ckp), .ckin_n(ckn), .ckout(ckfb), .vdd(vdd), .vss(vss));
+  lock_detect #(.n_lock(n_lock)) u_lock(.ckref(ckref), .ckfb(ckfb), .lock(lock), .vdd(vdd), .vss(vss));
+endmodule
+
+`endif

@@ -1,0 +1,140 @@
+// divide-by-N, the TX PLL feedback divide. Divides 14 GHz from VCO by n = 32 down
+// to 437.5 MHz reference rate. Two instances, one at TX, one at RX.
+
+`include "disciplines.vams"
+
+module div_n(ckin_p, ckin_n, ckout, vdd, vss);
+  input ckin_p, ckin_n;
+  output ckout;
+  inout vdd, vss;
+  electrical ckin_p, ckin_n, ckout, vdd, vss;
+  electrical drv; // ideal driver output, behind rout
+
+  (* desc = "division ratio" *)
+  parameter integer n = 32 from [2:1023];
+  (* desc = "receiver input-referred offset", units = "V" *)
+  parameter real vos = 0 from [-0.1:0.1];
+  (* desc = "receiver hysteresis, full width", units = "V" *)
+  parameter real vhys = 10m from [0:0.2];
+  (* desc = "delay from input threshold crossing to output 50 %", units = "s" *)
+  parameter real tpd = 150p from (0:2n);
+  (* desc = "output edge duration, 0 to 100 %", units = "s" *)
+  parameter real trf = 30p from (0:1n);
+  (* desc = "added random jitter per output edge, rms", units = "s" *)
+  parameter real rj = 150f from [0:10p];
+  (* desc = "seed of the jitter sequence; give every instance its own" *)
+  parameter integer rj_seed = 2;
+  (* desc = "output driver resistance, 0 for an ideal source", units = "Ohm" *)
+  parameter real rout = 100 from [0:inf);
+  (* desc = "lowest input frequency of the specified range, 0 for none", units = "Hz" *)
+  parameter real fmin = 11.9G from [0:inf);
+  (* desc = "highest input frequency of the specified range", units = "Hz" *)
+  parameter real fmax = 16.1G from (0:inf);
+
+  localparam integer K = 4; // output edges in flight, DO NOT CHANGE INDEPNDENTLY
+
+  real te0, te1, te2, te3; // 50 % times of the queued output edges
+  real de0, de1, de2, de3; // their directions: +1 rising, -1 falling, 0 empty
+  real vd, th_r, th_f, x_r, x_prev, per, base, y, t_new, d_old, t_old;
+  integer st, cnt, lvl_out, wr, seed, n_fast, n_slow, n_cyc;
+
+  analog begin
+    vd = V(ckin_p, ckin_n);
+    th_r = vos + 0.5 * vhys;
+    th_f = vos - 0.5 * vhys;
+
+    x_r = last_crossing(vd - th_r, +1);
+
+    @(initial_step) begin
+      seed = rj_seed;
+      st = (vd > vos) ? 1 : 0;
+      cnt = 0;
+      lvl_out = 0;
+      base = 0;
+      wr = 0;
+      x_prev = -1;
+      te0 = -1; te1 = -1; te2 = -1; te3 = -1;
+      de0 = 0; de1 = 0; de2 = 0; de3 = 0;
+    end
+
+    // Rising
+    @(above(vd - th_r)) begin
+      if (st == 0) begin
+        st = 1;
+        cnt = cnt + 1;
+        if (cnt >= n)
+          cnt = 0;
+        if (!analysis("static")) begin
+          if (x_prev >= 0) begin
+            per = x_r - x_prev;
+            n_cyc = n_cyc + 1;
+            if (per < 0.999 / fmax) begin
+              if (n_fast == 0)
+                $warning("div_n: input period %e s is below 1/fmax at t = %e s", per, $abstime);
+              n_fast = n_fast + 1;
+            end
+            if (fmin > 0 && per > 1.001 / fmin) begin
+              if (n_slow == 0)
+                $warning("div_n: input period %e s is above 1/fmin at t = %e s", per, $abstime);
+              n_slow = n_slow + 1;
+            end
+          end
+          x_prev = x_r;
+        end
+        
+        if ((2 * cnt >= n ? 1 : 0) != lvl_out) begin
+          lvl_out = 1 - lvl_out;
+        
+        if (analysis("static"))
+          t_new = -1;
+        else
+          t_new = (x_r >= 0 ? x_r : $abstime) + tpd + rj * $rdist_normal(seed, 0, 1);
+        
+        case (wr)
+          0: begin d_old = de0; t_old = te0; de0 = lvl_out ? 1 : -1; te0 = t_new; end
+          1: begin d_old = de1; t_old = te1; de1 = lvl_out ? 1 : -1; te1 = t_new; end
+          2: begin d_old = de2; t_old = te2; de2 = lvl_out ? 1 : -1; te2 = t_new; end
+          default: begin d_old = de3; t_old = te3; de3 = lvl_out ? 1 : -1; te3 = t_new; end
+        endcase
+
+        // The slot's previous edge is complete by now: fold it into base.
+        if (d_old != 0 && $abstime < t_old + 0.5 * trf)
+          $warning("div_n: more than %0d output edges in flight at t = %e s", K, $abstime);
+        
+        base = base + d_old;
+        wr = (wr + 1) % K;
+        end
+      end
+    end
+
+    // Falling
+    @(above(th_f - vd))
+      st = 0;
+
+    y = base + de0 * min(max(($abstime - te0) / trf + 0.5, 0.0), 1.0)
+             + de1 * min(max(($abstime - te1) / trf + 0.5, 0.0), 1.0)
+             + de2 * min(max(($abstime - te2) / trf + 0.5, 0.0), 1.0)
+             + de3 * min(max(($abstime - te3) / trf + 0.5, 0.0), 1.0);
+    
+    
+    // Breakpoints
+    @(timer(te0 - 0.5 * trf)) ;
+    @(timer(te0 + 0.5 * trf)) ;
+    @(timer(te1 - 0.5 * trf)) ;
+    @(timer(te1 + 0.5 * trf)) ;
+    @(timer(te2 - 0.5 * trf)) ;
+    @(timer(te2 + 0.5 * trf)) ;
+    @(timer(te3 - 0.5 * trf)) ;
+    @(timer(te3 + 0.5 * trf)) ;
+
+    @(final_step)
+      if (n_fast > 0 || n_slow > 0)
+        $warning("div_n: %0d of %0d input periods below 1/fmax, %0d above 1/fmin", n_fast, n_cyc, n_slow);
+
+    V(drv, vss) <+ y * V(vdd, vss);
+    if (rout > 0)
+      I(drv, ckout) <+ V(drv, ckout) / rout;
+    else
+      V(drv, ckout) <+ 0;
+  end
+endmodule

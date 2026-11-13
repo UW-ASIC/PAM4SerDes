@@ -1,0 +1,202 @@
+// Eight positive-edge D flip-flops in true single-phase clock (TSPC) logic on 
+// one clock. Retimes eight 3.5 Gb/s lanes between CMOS and charge steering stages.
+
+`include "disciplines.vams"
+
+module dff_tspc_1lane(clk, d, q, vdd, vss);
+  input clk, d;
+  output q;
+  inout vdd, vss;
+  electrical clk, d, q, vdd, vss;
+  electrical dq; // ideal driver output, behind rout
+
+  parameter integer idx = 0;           // bit number, for messages
+  parameter real tcq = 30p from (0:1n);
+  parameter real tsu = 15p from [0:1n);
+  parameter real th = 8p from [0:1n);
+  parameter real trf = 25p from (0:1n);
+  parameter real rj = 200f from [0:10p];
+  parameter integer rj_seed = 4;
+  parameter real rout = 100 from [0:inf);
+
+  real vth, vc, vd, x_c, x_dr, x_df, x_d, x_cl, tc, t50, y;
+  integer cst, dset, dprev, dv, st, st0, seed, n_clk, n_su, n_h;
+
+  analog begin
+    vth = 0.5 * V(vdd, vss);
+    vc = V(clk, vss);
+    vd = V(d, vss);
+    x_c = last_crossing(vc - vth, +1);
+    x_dr = last_crossing(vd - vth, +1);
+    x_df = last_crossing(vd - vth, -1);
+
+    @(initial_step) begin
+      seed = rj_seed;
+      cst = (vc > vth) ? 1 : 0;
+      dset = (vd > vth) ? 1 : 0;
+      dprev = dset;
+      x_d = -1;  // time of d's latest crossing, dprev is its value before it
+      x_cl = -1; // time of the latest clock edge
+      st = 0;
+      st0 = 0;
+      t50 = -1;  // no edge yet, q sits at st
+    end
+
+    // Data events come first, so that a clock event in the same time step
+    // sees d's state and latest crossing. A crossing after an edge already
+    // taken is checked against the hold time here.
+    @(above(vd - vth)) begin
+      if (dset == 0) begin
+        dprev = 0;
+        dset = 1;
+        x_d = (x_dr >= 0) ? x_dr : $abstime;
+        if (!analysis("static") && x_cl >= 0 && x_d - x_cl < th) begin
+          if (n_h == 0)
+            $warning("dff_tspc_x8 lane %0d: hold violation, d rose %e s after the clock edge at %e s", idx, x_d - x_cl, x_cl);
+          n_h = n_h + 1;
+        end
+      end
+    end
+    @(above(vth - vd)) begin
+      if (dset == 1) begin
+        dprev = 1;
+        dset = 0;
+        x_d = (x_df >= 0) ? x_df : $abstime;
+        if (!analysis("static") && x_cl >= 0 && x_d - x_cl < th) begin
+          if (n_h == 0)
+            $warning("dff_tspc_x8 lane %0d: hold violation, d fell %e s after the clock edge at %e s", idx, x_d - x_cl, x_cl);
+          n_h = n_h + 1;
+        end
+      end
+    end
+
+    // Clock edges
+    @(above(vc - vth)) begin
+      if (cst == 0) begin
+        cst = 1;
+        if (analysis("static")) begin
+          dv = dset;
+          t50 = -1;
+        end else begin
+          tc = (x_c >= 0) ? x_c : $abstime;
+          n_clk = n_clk + 1;
+          if (x_d > tc) begin
+            // d crossed after the edge, within this time step q takes the
+            // value before that crossing.
+            dv = dprev;
+            if (x_d - tc < th) begin
+              if (n_h == 0)
+                $warning("dff_tspc_x8 lane %0d: hold violation, d changed %e s after the clock edge at %e s", idx, x_d - tc, tc);
+              n_h = n_h + 1;
+            end
+          end else if (x_d >= 0 && tc - x_d < tsu) begin
+            dv = dprev;
+            if (n_su == 0)
+              $warning("dff_tspc_x8 lane %0d: setup violation, d changed %e s before the clock edge at %e s", idx, tc - x_d, tc);
+            n_su = n_su + 1;
+          end else
+            dv = dset;
+          x_cl = tc;
+          t50 = tc + tcq + rj * $rdist_normal(seed, 0, 1);
+        end
+        if (dv != st) begin
+          st0 = st;
+          st = dv;
+        end else
+          st0 = st;
+      end
+    end
+    @(above(vth - vc))
+      cst = 0;
+
+    // Breakpoints
+    @(timer(t50 - 0.5 * trf)) ;
+    @(timer(t50 + 0.5 * trf)) ;
+
+    @(final_step)
+      if (n_su > 0 || n_h > 0)
+        $warning("dff_tspc_x8 lane %0d: %0d setup and %0d hold violations in %0d clock edges", idx, n_su, n_h, n_clk);
+
+    y = st0 + (st - st0) * min(max(($abstime - t50) / trf + 0.5, 0.0), 1.0);
+    V(dq, vss) <+ y * V(vdd, vss);
+    if (rout > 0)
+      I(dq, q) <+ V(dq, q) / rout;
+    else
+      V(dq, q) <+ 0;
+  end
+endmodule
+
+module dff_tspc_x8(clk, d, q, vdd, vss);
+  input clk;
+  input [7:0] d;
+  output [7:0] q;
+  inout vdd, vss;
+  electrical clk, vdd, vss;
+  electrical [7:0] d, q;
+
+  (* desc = "delay from clock 50 % to q 50 %", units = "s" *)
+  parameter real tcq = 30p from (0:1n);
+  (* desc = "setup time: d stable this long before the clock edge", units = "s" *)
+  parameter real tsu = 15p from [0:1n);
+  (* desc = "hold time: d stable this long after the clock edge", units = "s" *)
+  parameter real th = 8p from [0:1n);
+  (* desc = "output edge duration, 0 to 100 %", units = "s" *)
+  parameter real trf = 25p from (0:1n);
+  (* desc = "added random jitter per output edge, rms", units = "s" *)
+  parameter real rj = 200f from [0:10p];
+  (* desc = "seed of bit 0's jitter sequence (bit i: rj_seed + 100 i); give every instance its own" *)
+  parameter integer rj_seed = 4;
+  (* desc = "output driver resistance, 0 for an ideal source", units = "Ohm" *)
+  parameter real rout = 100 from [0:inf);
+  (* desc = "lowest clock frequency of the specified range, 0 for none", units = "Hz" *)
+  parameter real fmin = 2.975G from [0:inf);
+  (* desc = "highest clock frequency of the specified range", units = "Hz" *)
+  parameter real fmax = 4.025G from (0:inf);
+
+  genvar i;
+  generate
+    for (i = 0; i < 8; i = i + 1) begin : lane
+      dff_tspc_1lane #(.idx(i), .tcq(tcq), .tsu(tsu), .th(th), .trf(trf), .rj(rj), .rj_seed(rj_seed + 100 * i), .rout(rout))
+      ff(.clk(clk), .d(d[i]), .q(q[i]), .vdd(vdd), .vss(vss));
+    end
+  endgenerate
+
+  real vth, x_c, x_prev, per;
+  integer cst, n_fast, n_slow, n_cyc;
+
+  analog begin
+    vth = 0.5 * V(vdd, vss);
+    x_c = last_crossing(V(clk, vss) - vth, +1);
+    @(initial_step) begin
+      cst = (V(clk, vss) > vth) ? 1 : 0;
+      x_prev = -1;
+    end
+    @(above(V(clk, vss) - vth)) begin
+      if (cst == 0) begin
+        cst = 1;
+        if (!analysis("static")) begin
+          if (x_prev >= 0) begin
+            per = x_c - x_prev;
+            n_cyc = n_cyc + 1;
+            if (per < 0.999 / fmax) begin
+              if (n_fast == 0)
+                $warning("dff_tspc_x8: clock period %e s is below 1/fmax at t = %e s", per, $abstime);
+              n_fast = n_fast + 1;
+            end
+            if (fmin > 0 && per > 1.001 / fmin) begin
+              if (n_slow == 0)
+                $warning("dff_tspc_x8: clock period %e s is above 1/fmin at t = %e s", per, $abstime);
+              n_slow = n_slow + 1;
+            end
+          end
+          x_prev = x_c;
+        end
+      end
+    end
+    @(above(vth - V(clk, vss)))
+      cst = 0;
+    @(final_step)
+      if (n_fast > 0 || n_slow > 0)
+        $warning("dff_tspc_x8: %0d of %0d clock periods below 1/fmax, %0d above 1/fmin", n_fast, n_cyc, n_slow);
+  end
+endmodule
