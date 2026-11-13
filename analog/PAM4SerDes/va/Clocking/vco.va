@@ -21,7 +21,9 @@ module vco(v_ctrl, v_out, vdd, gnd);
     parameter real v_c0     = 0;                // V_ctrl that gives f_0
     parameter real k_vco    = 2e9;              // gain
     parameter real p_init   = 0;                // initial phase
-    parameter real v_amp    = 1 from (0:vdd);   // output peak amplitude
+    parameter real v_amp    = vdd from [gnd:vdd];   // output peak amplitude
+     parameter real t_rf = 0 from [0:inf);       //output rise/fall time
+
 
     real frequency, phase;
 
@@ -31,7 +33,16 @@ module vco(v_ctrl, v_out, vdd, gnd);
         //Angular frequency to phase formula, in Razavi page 646
         phase = 2 * `M_PI * idtmod(frequency, p_init/(2 * `M_PI), 1);
 
-        V(v_out) <+ v_amp*sin(phase);
+        @(initial_step)
+            high = 0;
+
+        @(cross($sin(phase), +1))
+            high = 1;
+        
+        @(cross($sin(phase), -1))
+            high = 0;
+
+        V(v_out, gnd) <+ v_amp*transition(, 0, t_rf)
 
         $bound_step(0.1/frequency);
     end
