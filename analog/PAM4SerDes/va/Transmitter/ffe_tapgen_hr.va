@@ -1,0 +1,289 @@
+// Standard Verilog-A definitions; disciplines.vams defines electrical nodes.
+`include "constants.vams"
+`include "disciplines.vams"
+
+// PURPOSE: prepare three differently delayed copies of ONE binary stream
+// for a feed-forward equalizer (FFE), using half-rate (hr) parallel lanes.
+// Instantiate this block once for MSB and once for the already mapped LSB.
+// This is a behavioral model, not a transistor implementation from the paper.
+//
+// Position in ONE transmitter path:
+//   Two first-stage CML muxes -> this FFE -> three final CML muxes
+//   -> pre-drivers -> PAM4 driver.
+//
+// The input arrives as two bits per 14 GHz clock cycle:
+//   E[k] = x[2k]   (EVEN bit), O[k] = x[2k+1] (ODD bit).
+// x[n] denotes bit n in the intended serial stream; k denotes a bit pair.
+// BOTH input bits are captured at the SAME rising clock edge.
+// Six 14 Gb/s differential output lanes carry PRE/MAIN/POST, each as E/O.
+// Three EXTERNAL final muxes interleave these into three 28 Gb/s streams.
+//
+// After the common pipeline latency, the serialized taps are:
+//   PRE[n] = x[n], MAIN[n] = x[n-1], POST[n] = x[n-2].
+// A unit interval (UI) is one serial bit time: 1/28 GHz = 35.714 ps.
+// MAIN is 1 UI behind PRE, and POST is 2 UI behind PRE. "PRE" means
+// earlier relative to MAIN; the block does not predict future input bits.
+// This cell prepares the tap data only. The downstream driver applies
+// weights, sign inversion, MSB/LSB weighting and PAM4 current summation.
+//
+// Clock contract: final muxes share clk14 and select EVEN when positive,
+// ODD when negative (default zero thresholds). Refresh the opposite bank:
+//   Rising edge: capture E/O; update ODD bank from the previous pair.
+//   Falling edge: update EVEN bank from the newly captured pair.
+// Pair k is therefore emitted in clock period k+1. Capture to its first
+// selection takes one clock period (2 UI = 71.43 ps), plus final mux delay.
+// This staging is a chosen model interface;
+module ffe_tapgen_hr (
+    de_p, de_n, do_p, do_n, clk_p, clk_n, rst,
+    pre_e_p, pre_e_n, pre_o_p, pre_o_n,
+    main_e_p, main_e_n, main_o_p, main_o_n,
+    post_e_p, post_e_n, post_o_p, post_o_n, vdd, vss
+);
+    // Every _p/_n pair carries ONE differential signal, not two bits.
+    // V(p,n) means V(p)-V(n); positive data represents logic 1 by default.
+    //   de_p/de_n   : EVEN input E[k], from a first-stage mux.
+    //   do_p/do_n   : ODD input O[k], from the other first-stage mux.
+    //   clk_p/clk_n : external differential half-rate clock (14 GHz here).
+    //   rst        : single-ended, active-high reset relative to VSS.
+    // Output naming: <tap>_<lane>_<polarity>, where tap = pre/main/post,
+    // lane = e (EVEN) or o (ODD), and polarity = p or n.
+    // For example, main_e_p/main_e_n is MAIN's EVEN differential lane.
+    // Connect each tap's E/O pair of lanes to its own external final mux.
+    //   vdd/vss    : external supply/reference; testbench uses 0.7 V / 0 V.
+    input de_p, de_n, do_p, do_n, clk_p, clk_n, rst;
+    output pre_e_p, pre_e_n, pre_o_p, pre_o_n;
+    output main_e_p, main_e_n, main_o_p, main_o_n;
+    output post_e_p, post_e_n, post_o_p, post_o_n;
+    inout vdd, vss;
+    // "electrical" gives these ports analog voltage/current behavior.
+    electrical de_p, de_n, do_p, do_n, clk_p, clk_n, rst;
+    electrical pre_e_p, pre_e_n, pre_o_p, pre_o_n;
+    electrical main_e_p, main_e_n, main_o_p, main_o_n;
+    electrical post_e_p, post_e_n, post_o_p, post_o_n, vdd, vss;
+
+    // Configurable parameters use SI units. "from (0:inf)" requires a
+    // positive value; "from [0:inf)" permits zero. These electrical/timing
+    // defaults have not been extracted from a transistor implementation.
+
+    // Total sink current (A) for EACH output pair, not all six combined.
+    // 1.5 mA with 200 ohms/leg gives the diagram's 0.6 Vpp differential
+    // CML target for negligible external loading: Vpp,diff = 2*itail*rload.
+    parameter real itail = 1.5e-3 from (0:inf);
+
+    // Internal resistor (ohms) from EACH output leg to VDD. 200 ohms is
+    // an assumed load, separate from the final PAM4 driver's termination.
+    parameter real rload = 200.0 from (0:inf);
+
+    // Assumed delay (s) from a q_* state change to the start of its output
+    // transition. Applies to clocked updates AND reset. This 2 ps delay
+    // is separate from the common one-clock-period staging latency above.
+    parameter real t_cq = 2.0e-12 from [0:inf);
+
+    // Assumed rise/fall durations (s) of the normalized output controls.
+    // Finite 2 ps edges replace instantaneous jumps; these are behavioral
+    // settings, not measured transistor rise/fall times.
+    parameter real tr = 2.0e-12 from (0:inf);
+    parameter real tf = 2.0e-12 from (0:inf);
+
+    // Differential data threshold (V), used for BOTH input lanes.
+    // Above it -> logic 1; at or below it -> logic 0. Zero assumes no offset.
+    parameter real vth_data = 0.0;
+
+    // Differential clock threshold (V) used to detect rising/falling edges.
+    // Zero matches the default final-mux clock selection threshold.
+    parameter real vth_clk = 0.0;
+
+    // Reset threshold (V relative to VSS); 0.35 V is half the assumed
+    // 0.7 V reset logic supply. This parameter does not track VDD automatically.
+    parameter real vth_rst = 0.35;
+
+    // Numerical tolerances for cross() edge detection: ttol in seconds,
+    // vtol in volts. These are NOT jitter or circuit-noise specifications.
+    parameter real ttol = 1.0e-15 from (0:inf);
+    parameter real vtol = 1.0e-6 from (0:inf);
+
+    // Requested maximum transient time step (s), to resolve fast changes.
+    // This affects simulation resolution, not physical circuit latency.
+    parameter real max_step = 0.5e-12 from (0:inf);
+
+    // Bit used at startup/reset and for history that has not arrived yet.
+    // Only 0 or 1 is allowed; the chosen default is 0.
+    parameter integer init_bit = 0 from [0:1];
+
+    // All integer states below store -1 for logic 0 and +1 for logic 1.
+    // These normalized values are NOT voltages and are not restricted to
+    // integer 0/1 internally. Suffix e/o always identifies EVEN/ODD.
+    // history_e/history_o: previous pair E[k-1]/O[k-1], until replaced at
+    // the END of the next rising-edge handler.
+    // captured_e/captured_o: current pair E[k]/O[k], sampled together.
+    integer history_e, history_o, captured_e, captured_o;
+
+    // Pending values are prepared from the captured pair and its history;
+    // they wait until their output bank can safely be updated.
+    // pending_pre_o = O[k], pending_main_o = E[k], pending_post_o = O[k-1].
+    // These ODD values are transferred on the NEXT rising edge.
+    integer pending_pre_o, pending_main_o, pending_post_o;
+    // pending_pre_e = E[k], pending_main_e = O[k-1], pending_post_e = E[k-1].
+    // These EVEN values are transferred on the following falling edge.
+    integer pending_pre_e, pending_main_e, pending_post_e;
+
+    // q_pre_e/q_pre_o   : held PRE output-bank states.
+    // q_main_e/q_main_o : held MAIN output-bank states.
+    // q_post_e/q_post_o : held POST output-bank states.
+    // q_* changes at bank-update events or reset, not continuously with data.
+    integer q_pre_e, q_pre_o, q_main_e, q_main_o, q_post_e, q_post_o;
+
+    // s_pre_e/s_pre_o, s_main_e/s_main_o, s_post_e/s_post_o are the matching
+    // q_* states after delay and smoothing. These real-valued controls
+    // move between -1 and +1 and steer the six pairs' output currents.
+    real s_pre_e, s_pre_o, s_main_e, s_main_o, s_post_e, s_post_o;
+
+    analog begin
+        // Ask the transient simulator not to step over fast signal changes.
+        $bound_step(max_step);
+
+        // 1. Initialize at simulation startup OR reset without needing a clock.
+        // initial_step runs at initialization. cross(...,+1,...) detects
+        // reset crossing its threshold in the rising direction.
+        // 2*init_bit-1 maps bit 0 -> -1 and bit 1 -> +1.
+        // Clear BOTH output banks, pending values and previous-pair history
+        // so data from before reset cannot reappear in a later tap.
+        // A reset bit of 0 produces negative differential voltage, not 0 V.
+        @(initial_step or cross(V(rst,vss) - vth_rst, +1, ttol, vtol)) begin
+            history_e = 2 * init_bit - 1;
+            history_o = 2 * init_bit - 1;
+            captured_e = 2 * init_bit - 1;
+            captured_o = 2 * init_bit - 1;
+            pending_pre_e = 2 * init_bit - 1;
+            pending_main_e = 2 * init_bit - 1;
+            pending_post_e = 2 * init_bit - 1;
+            pending_pre_o = 2 * init_bit - 1;
+            pending_main_o = 2 * init_bit - 1;
+            pending_post_o = 2 * init_bit - 1;
+            q_pre_e = 2 * init_bit - 1;
+            q_pre_o = 2 * init_bit - 1;
+            q_main_e = 2 * init_bit - 1;
+            q_main_o = 2 * init_bit - 1;
+            q_post_e = 2 * init_bit - 1;
+            q_post_o = 2 * init_bit - 1;
+        end
+
+        // 2. Rising clock edge: cross(...,+1,...) triggers as the clock
+        // difference rises through vth_clk. Both inputs must be stable here.
+        // Setup/hold violations and metastability are not modeled.
+        @(cross(V(clk_p,clk_n) - vth_clk, +1, ttol, vtol)) begin
+            // While reset is active, inhibit captures and bank updates.
+            if (V(rst,vss) < vth_rst) begin
+                // Final mux now selects EVEN: refresh unselected ODD bank
+                // from the PREVIOUS captured pair before replacing pending.
+                // These are ordered assignments: moving them after the
+                // pending_* assignments would change which pair is emitted.
+                q_pre_o = pending_pre_o;
+                q_main_o = pending_main_o;
+                q_post_o = pending_post_o;
+                // Sample E[k] and O[k] together. "condition ? a : b" selects
+                // a when true and b otherwise. Later input changes cannot
+                // alter these stored values until the next rising capture.
+                captured_e = (V(de_p,de_n) > vth_data) ? 1 : -1;
+                captured_o = (V(do_p,do_n) > vth_data) ? 1 : -1;
+
+                // Prepare the EVEN serialized position n=2k:
+                //   PRE=x[2k], MAIN=x[2k-1], POST=x[2k-2].
+                // MAIN must use the PREVIOUS ODD bit: the immediately
+                // preceding bit in serial order is on the other lane.
+                pending_pre_e = captured_e;
+                pending_main_e = history_o;
+                pending_post_e = history_e;
+
+                // Prepare the ODD serialized position n=2k+1:
+                //   PRE=x[2k+1], MAIN=x[2k], POST=x[2k-1].
+                // MAIN now uses the CURRENT EVEN bit. This cross-lane
+                // mapping gives 1 UI tap spacing; delaying each lane by
+                // its own full period alone would give 2 UI spacing.
+                // Hold these pending values until the NEXT rising edge.
+                pending_pre_o = captured_o;
+                pending_main_o = captured_e;
+                pending_post_o = history_o;
+                // Save this pair as history for the next capture, only
+                // AFTER the old history has been used to prepare all taps.
+                history_e = captured_e;
+                history_o = captured_o;
+            end
+        end
+
+        // 3. Falling clock edge: -1 requests a downward threshold crossing.
+        // Transfer prepared EVEN values; do NOT sample the input pins here.
+        @(cross(V(clk_p,clk_n) - vth_clk, -1, ttol, vtol)) begin
+            if (V(rst,vss) < vth_rst) begin
+                // Final mux now selects ODD: refresh unselected EVEN bank.
+                // EVEN then has a half-cycle to settle before selection.
+                q_pre_e = pending_pre_e;
+                q_main_e = pending_main_e;
+                q_post_e = pending_post_e;
+            end
+        end
+
+        // 4. Convert held integer states into controls with finite edges.
+        // transition(state, delay, rise_time, fall_time) delays each change
+        // by t_cq and smooths it over tr or tf. Keep these analog operators
+        // outside the event handlers so the simulator evaluates them normally.
+        // This smooths the discrete q_* states, not the analog input waveforms.
+        s_pre_e = transition(q_pre_e, t_cq, tr, tf);
+        s_pre_o = transition(q_pre_o, t_cq, tr, tf);
+        s_main_e = transition(q_main_e, t_cq, tr, tf);
+        s_main_o = transition(q_main_o, t_cq, tr, tf);
+        s_post_e = transition(q_post_e, t_cq, tr, tf);
+        s_post_o = transition(q_post_o, t_cq, tr, tf);
+
+        // 5. Six identical, unweighted CML output stages.
+        // "<+" contributes a circuit equation, not a variable assignment.
+        // I(a,b) is positive from a to b. In each group of four equations:
+        //   First two: I=V/R places a resistor from each output leg to VDD.
+        //   Last two: split itail between current sinks to VSS.
+        // s=+1 -> P sinks 0, N sinks itail -> positive differential output.
+        // s=-1 -> P sinks itail, N sinks 0 -> negative differential output.
+        // Each pair's two sink contributions always sum to itail.
+        // At settled states with negligible external loading:
+        //   Vdiff = +/-itail*rload = +/-0.3 V (0.6 Vpp differential).
+        //   Vcm relative to VSS = V(vdd,vss)-itail*rload/2 = 0.55 V at 0.7 V.
+        // External loads change these levels. No internal output capacitance,
+        // transistor headroom limits or noise are modeled in this FFE cell.
+        // All tap amplitudes/polarities are equal here; driver weights come later.
+
+        // PRE, EVEN lane: prepared from E[k].
+        I(pre_e_p, vdd) <+ V(pre_e_p, vdd) / rload;
+        I(pre_e_n, vdd) <+ V(pre_e_n, vdd) / rload;
+        I(pre_e_p, vss) <+ 0.5 * itail * (1.0 - s_pre_e);
+        I(pre_e_n, vss) <+ 0.5 * itail * (1.0 + s_pre_e);
+
+        // PRE, ODD lane: prepared from O[k].
+        I(pre_o_p, vdd) <+ V(pre_o_p, vdd) / rload;
+        I(pre_o_n, vdd) <+ V(pre_o_n, vdd) / rload;
+        I(pre_o_p, vss) <+ 0.5 * itail * (1.0 - s_pre_o);
+        I(pre_o_n, vss) <+ 0.5 * itail * (1.0 + s_pre_o);
+
+        // MAIN, EVEN lane: prepared from O[k-1] (one serial bit before E[k]).
+        I(main_e_p, vdd) <+ V(main_e_p, vdd) / rload;
+        I(main_e_n, vdd) <+ V(main_e_n, vdd) / rload;
+        I(main_e_p, vss) <+ 0.5 * itail * (1.0 - s_main_e);
+        I(main_e_n, vss) <+ 0.5 * itail * (1.0 + s_main_e);
+
+        // MAIN, ODD lane: prepared from E[k] (one serial bit before O[k]).
+        I(main_o_p, vdd) <+ V(main_o_p, vdd) / rload;
+        I(main_o_n, vdd) <+ V(main_o_n, vdd) / rload;
+        I(main_o_p, vss) <+ 0.5 * itail * (1.0 - s_main_o);
+        I(main_o_n, vss) <+ 0.5 * itail * (1.0 + s_main_o);
+
+        // POST, EVEN lane: prepared from E[k-1] (two serial bits before E[k]).
+        I(post_e_p, vdd) <+ V(post_e_p, vdd) / rload;
+        I(post_e_n, vdd) <+ V(post_e_n, vdd) / rload;
+        I(post_e_p, vss) <+ 0.5 * itail * (1.0 - s_post_e);
+        I(post_e_n, vss) <+ 0.5 * itail * (1.0 + s_post_e);
+
+        // POST, ODD lane: prepared from O[k-1] (two serial bits before O[k]).
+        I(post_o_p, vdd) <+ V(post_o_p, vdd) / rload;
+        I(post_o_n, vdd) <+ V(post_o_n, vdd) / rload;
+        I(post_o_p, vss) <+ 0.5 * itail * (1.0 - s_post_o);
+        I(post_o_n, vss) <+ 0.5 * itail * (1.0 + s_post_o);
+    end
+endmodule
