@@ -1,0 +1,83 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// PRBS7 source, x^7 + x^6 + 1 (feedback from bits 6 and 5)
+// Each clock generates 64 PRBS bits, grouped into 32 Gray-coded symbols
+// The first symbol occupies gray_out[63:62]; reset is active-high, synchronous
+
+module prbs_gray_src(clk, reset, gray_out);
+    input clk, reset;
+    output [63:0] gray_out;
+    electrical clk, reset;
+    electrical [63:0] gray_out;
+
+    parameter real vhi = 0.7;
+    parameter real vth = 0.35;
+    parameter real tedge = 5e-12 from (0:inf);
+
+    integer state;
+    integer feedback;
+    integer bit_hi, bit_lo;
+    integer upper_word, lower_word;
+    integer i;
+    genvar j;
+
+    analog begin
+        @(initial_step) begin
+            state = 127;
+            upper_word = 0;
+            lower_word = 0;
+        end
+
+        @(cross(V(clk) - vth, +1)) begin
+            if (V(reset) > vth) begin
+                state = 127;
+                upper_word = 0;
+                lower_word = 0;
+            end else begin
+                upper_word = 0;
+                lower_word = 0;
+
+                // First 16 Gray symbols
+                for (i = 0; i < 16; i = i + 1) begin
+                    bit_hi = (state >> 6) & 1;
+                    feedback = ((state >> 6) ^ (state >> 5)) & 1;
+                    state = ((state << 1) & 127) | feedback;
+
+                    bit_lo = (state >> 6) & 1;
+                    feedback = ((state >> 6) ^ (state >> 5)) & 1;
+                    state = ((state << 1) & 127) | feedback;
+
+                    // Gray pair: (bit_hi, bit_hi XOR bit_lo)
+                    upper_word = (upper_word << 2) |
+                                 (bit_hi << 1) | (bit_hi ^ bit_lo);
+                end
+
+                // Remaining 16 Gray symbols
+                for (i = 0; i < 16; i = i + 1) begin
+                    bit_hi = (state >> 6) & 1;
+                    feedback = ((state >> 6) ^ (state >> 5)) & 1;
+                    state = ((state << 1) & 127) | feedback;
+
+                    bit_lo = (state >> 6) & 1;
+                    feedback = ((state >> 6) ^ (state >> 5)) & 1;
+                    state = ((state << 1) & 127) | feedback;
+
+                    lower_word = (lower_word << 2) |
+                                 (bit_hi << 1) | (bit_hi ^ bit_lo);
+                end
+            end
+        end
+
+        
+        
+        for (j = 0; j < 32; j = j + 1) begin
+            V(gray_out[j]) <+ transition(
+                vhi * ((lower_word >> j) & 1), 0, tedge, tedge);
+
+            V(gray_out[j + 32]) <+ transition(
+                vhi * ((upper_word >> j) & 1), 0, tedge, tedge);
+        end
+
+    end
+endmodule
