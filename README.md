@@ -2,6 +2,13 @@
 
 A template for mixed-signal ASIC design using open-source tools, featuring automated workflows for digital, analog, and integration for TinyTapeout chip projects.
 
+## Transmitter behavioral models
+
+The half-rate CML mux and FFE cells, their pin/clock contract, and VerA test
+commands are documented in [the transmitter README](analog/PAM4SerDes/va/Transmitter/README.md).
+These use the explicit `tx-lint`, `tx-check`, and `tx-test` targets in
+`analog/PAM4SerDes/build/va`; they are separate from the OpenVAF/OSDI flow.
+
 ## Documentation
 
 **Full documentation is available in the [`docs/`](./docs) directory.**

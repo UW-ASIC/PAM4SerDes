@@ -1,0 +1,66 @@
+`ifndef PAM4_MUX2_CML_HR_VA
+`define PAM4_MUX2_CML_HR_VA
+
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Transparent differential 2:1 CML mux: clock positive selects EVEN,
+// negative selects ODD. Selected data must remain stable; this is not a DFF.
+// Used at 7 GHz (2 x 7 -> 14 Gb/s) and 14 GHz (2 x 14 -> 28 Gb/s).
+// Behavioral model; timing defaults are assumptions. See README.md.
+module mux2_cml_hr (
+    de_p, de_n, do_p, do_n, clk_p, clk_n, out_p, out_n, vdd, vss
+);
+
+    // Each p/n pair is one signal; de/do = EVEN/ODD. vdd/vss are supply/reference.
+    input de_p, de_n, do_p, do_n, clk_p, clk_n;
+    output out_p, out_n;
+    inout vdd, vss;
+
+    electrical de_p, de_n, do_p, do_n, clk_p, clk_n;
+    electrical out_p, out_n, vdd, vss;
+
+    parameter real itail = 1.5e-3 from (0:inf); // A, total sink current per output pair
+    parameter real rload = 200.0 from (0:inf); // ohms per leg to VDD; 0.6 Vppd unloaded
+    parameter real cout = 5.0e-15 from [0:inf); // F per leg to VSS
+    parameter real vsoft_data = 10.0e-3 from (0:inf); // V, data switching width
+    parameter real vsoft_clk = 10.0e-3 from (0:inf); // V, clock switching width
+    parameter real vos_data = 0.0; // V, differential data offset
+    parameter real vos_clk = 0.0; // V, differential clock offset
+    parameter real tpd = 5.934e-12 from [0:inf); // s, transport delay (project estimate)
+    parameter real max_step = 0.5e-12 from (0:inf); // s, simulation step bound
+
+    // Normalized controls: select_even is 0..1; data/steering are -1..+1.
+    real select_even, even_level, odd_level, steering, delayed_steering;
+
+    analog begin
+
+        $bound_step(max_step);
+
+        // Smooth clock selection and data decisions around their offsets.
+        select_even = 0.5 * (1.0 + tanh((V(clk_p, clk_n) - vos_clk)
+                                      / vsoft_clk));
+
+        even_level = tanh((V(de_p, de_n) - vos_data) / vsoft_data);
+        odd_level  = tanh((V(do_p, do_n) - vos_data) / vsoft_data);
+
+        // Interleave the inputs, then apply transport delay.
+        steering = select_even * even_level + (1.0 - select_even) * odd_level;
+
+        delayed_steering = absdelay(steering, tpd);
+
+        // Per-leg loads and current steering: Vdiff = itail*rload*steering.
+        // Unloaded Vcm = VDD - itail*rload/2; the two sinks sum to itail.
+        I(out_p, vdd) <+ V(out_p, vdd) / rload;
+        I(out_n, vdd) <+ V(out_n, vdd) / rload;
+
+        I(out_p, vss) <+ 0.5 * itail * (1.0 - delayed_steering);
+        I(out_n, vss) <+ 0.5 * itail * (1.0 + delayed_steering);
+
+        // Output capacitance adds RC settling beyond tpd.
+        I(out_p, vss) <+ cout * ddt(V(out_p, vss));
+        I(out_n, vss) <+ cout * ddt(V(out_n, vss));
+    end
+endmodule
+
+`endif

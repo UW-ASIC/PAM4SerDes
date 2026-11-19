@@ -1,0 +1,19 @@
+// Exercise the real mux model at all eight binary input/select combinations.
+//! bias V(de_n) = 0.6, V(do_n) = 0.6, V(clk_n) = 0.6, V(vdd) = 0.7, V(vss) = 0
+//! sweep V(de_p) = 0.5, 0.7
+//! sweep V(do_p) = 0.5, 0.7
+//! sweep V(clk_p) = 0.5, 0.7
+//! solve
+//! print none
+//! display record
+`include "mux2_cml_hr.va"
+
+module mux_dc(de_p, de_n, do_p, do_n, clk_p, clk_n, out_p, out_n, vdd, vss);
+    inout de_p, de_n, do_p, do_n, clk_p, clk_n, out_p, out_n, vdd, vss;
+    electrical de_p, de_n, do_p, do_n, clk_p, clk_n, out_p, out_n, vdd, vss;
+    mux2_cml_hr dut(de_p, de_n, do_p, do_n, clk_p, clk_n, out_p, out_n, vdd, vss);
+    analog begin
+        $strobe("MUX de=%g odd=%g clk=%g vp=%g vn=%g",
+            V(de_p, de_n), V(do_p, do_n), V(clk_p, clk_n), V(out_p, vss), V(out_n, vss));
+    end
+endmodule

@@ -10,3 +10,8 @@ Thumbs.db
 .venv/
 .tools/
 .tmp/
+
+# Transmitter behavioral test outputs and compiler caches
+analog/PAM4SerDes/build/va/tx-cml-ffe-results/
+analog/PAM4SerDes/.zig-cache/
+analog/PAM4SerDes/test/tx_cml_ffe/__pycache__/

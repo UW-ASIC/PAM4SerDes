@@ -1,0 +1,46 @@
+`ifndef PAM4_TX_CML_FFE_PATH_VA
+`define PAM4_TX_CML_FFE_PATH_VA
+
+`include "mux2_cml_hr.va"
+`include "ffe_tapgen_hr.va"
+
+// CML/FFE segment of tx_ser_ffe_path, ONE binary path only.
+// Four 7 Gb/s lanes -> two 14 Gb/s lanes -> six half-rate tap lanes
+// -> three 28 Gb/s binary tap streams. Instantiate twice for MSB/LSB.
+// Upstream serializers/retiming and downstream pre-driver/driver are separate.
+module tx_cml_ffe_path (
+    d0_p, d0_n, d1_p, d1_n, d2_p, d2_n, d3_p, d3_n,
+    clk7_p, clk7_n, clk14_p, clk14_n, rst,
+    pre_p, pre_n, main_p, main_n, post_p, post_n, vdd, vss
+);
+    input d0_p, d0_n, d1_p, d1_n, d2_p, d2_n, d3_p, d3_n;
+    input clk7_p, clk7_n, clk14_p, clk14_n, rst;
+    output pre_p, pre_n, main_p, main_n, post_p, post_n;
+    inout vdd, vss;
+    electrical d0_p, d0_n, d1_p, d1_n, d2_p, d2_n, d3_p, d3_n;
+    electrical clk7_p, clk7_n, clk14_p, clk14_n, rst;
+    electrical pre_p, pre_n, main_p, main_n, post_p, post_n, vdd, vss;
+    electrical even_p, even_n, odd_p, odd_n;
+    electrical pe_p, pe_n, po_p, po_n, me_p, me_n, mo_p, mo_n;
+    electrical qe_p, qe_n, qo_p, qo_n;
+    parameter integer init_bit = 0 from [0:1];
+
+    // First stage: (d0,d2) supplies E; (d1,d3) supplies O.
+    mux2_cml_hr first_even(d0_p, d0_n, d2_p, d2_n,
+                          clk7_p, clk7_n, even_p, even_n, vdd, vss);
+    mux2_cml_hr first_odd(d1_p, d1_n, d3_p, d3_n,
+                         clk7_p, clk7_n, odd_p, odd_n, vdd, vss);
+    ffe_tapgen_hr #(.init_bit(init_bit)) taps(
+        even_p, even_n, odd_p, odd_n, clk14_p, clk14_n, rst,
+        pe_p, pe_n, po_p, po_n, me_p, me_n, mo_p, mo_n,
+        qe_p, qe_n, qo_p, qo_n, vdd, vss);
+    // THREE final muxes: one independent even/odd pair per tap.
+    mux2_cml_hr final_pre(pe_p, pe_n, po_p, po_n,
+                         clk14_p, clk14_n, pre_p, pre_n, vdd, vss);
+    mux2_cml_hr final_main(me_p, me_n, mo_p, mo_n,
+                          clk14_p, clk14_n, main_p, main_n, vdd, vss);
+    mux2_cml_hr final_post(qe_p, qe_n, qo_p, qo_n,
+                          clk14_p, clk14_n, post_p, post_n, vdd, vss);
+endmodule
+
+`endif
