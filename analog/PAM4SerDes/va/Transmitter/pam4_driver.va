@@ -1,0 +1,47 @@
+//! sweep V(msbp) = 1.1, 1.3
+//! sweep V(lsbp) = 1.1, 1.3
+//! bias V(msbn) = 1.2
+//! bias V(lsbn) = 1.2
+
+//! solve 
+//! print none
+
+`include "disciplines.vams" 
+
+module pam4_driver(msbp, msbn, lsbp, lsbn, outp, outn); 
+
+    input msbp, msbn, lsbp, lsbn;
+    output outp, outn;
+
+    electrical msbp, msbn, lsbp, lsbn, outp, outn; 
+
+    parameter real vcm  = 0.9 from (0:inf); //common-mode vol (Voutp + Voutn)/2
+    parameter real vppd = 0.8 from (0:inf); //total differential peak-to-peak span
+
+    real msb_sign; 
+    real lsb_sign;
+    real weighted_code;
+    real vdiff;
+
+    analog begin 
+
+        msb_sign = (V(msbp) > V(msbn)) ? 1.0 : -1.0; 
+        lsb_sign = (V(lsbp) > V(lsbn)) ? 1.0 : -1.0;
+
+        weighted_code = 2.0 * msb_sign + lsb_sign; //create 2:1 PAM4 weighting
+        //00 -> -3
+        //01 -> -1
+        //10 -> +1
+        //11 -> +3
+
+        vdiff = weighted_code * (vppd / 6.0); //-3 -> +3 is span of 6
+
+        V(outp) <+ vcm + vdiff/2.0; 
+        V(outn) <+ vcm - vdiff/2.0;
+
+        $strobe("OUTP = %g V, OUTN = %g V, VDIFF = %g V", //print
+                V(outp), V(outn), V(outp, outn));
+
+    end
+
+endmodule
