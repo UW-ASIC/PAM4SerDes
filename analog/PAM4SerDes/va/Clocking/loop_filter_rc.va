@@ -1,0 +1,32 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// UWASIC TX PLL passive RC loop filter.
+//
+// Topology used in this model:
+//   - Charge-pump current is injected into vctrl.
+//   - R connects vctrl to internal node n1.
+//   - C connects n1 to vss.
+//
+// Need to confirm Vctrl output node 
+// Connected to charge pump output or internal node
+
+
+module loop_filter_rc(vctrl, vss);
+
+    inout vctrl, vss;
+    electrical vctrl, vss;
+    electrical n1;
+
+    parameter real R = 25.31e3 from (0:inf);
+    parameter real C = 1.427e-12 from (0:inf);
+
+    analog begin
+        // Series resistor from charge-pump node to n1
+        I(vctrl, n1) <+ V(vctrl, n1) / R;
+
+        // Capacitor from n1 to the reference node
+        I(n1, vss) <+ C * ddt(V(n1, vss));
+    end
+
+endmodule
