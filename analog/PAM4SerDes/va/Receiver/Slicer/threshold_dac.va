@@ -1,0 +1,37 @@
+// hi
+// the three levels are 100mV, 0mV, -100mV
+//
+// threshold_dac: turns a code (0 to 63) into ONE threshold voltage for ONE slicer.
+// every slicer gets its own copy, set to the code closest to the threshold it needs.
+// spec: range -166.6 mV to +166.6 mV, 6 bits = 2^6 = 64 settings
+//this means that it never hits exact +-100mV, but it hits 0mV
+//! psweep code = 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+//! solve
+//! print none
+
+`include "disciplines.vams"
+
+module threshold_dac(vthp, vthn);
+    output vthp, vthn;
+    electrical vthp, vthn;
+
+    // which of the 64 settings to use (placeholder: ask lead how the code gets set)
+    parameter integer code = 32 from [0:63];
+    
+    // range is +-166.6mV
+    parameter real vmin = -0.1666;
+    parameter real vmax = 0.1666;
+    // midpoint of the output pair, same idea as the slicer 
+    parameter real v_commonmode = 0.5 from [0:0.7];
+
+    real vth;   // the threshold voltage = V(vthp) - V(vthn)
+    real step = (vmax-vmin)/64;
+
+    analog begin
+        vth = vmin + code*step;
+        V(vthp) <+ v_commonmode + vth/2;
+        V(vthn) <+ v_commonmode -vth/2;
+
+        $strobe("code = %0d  vth = %g mV", code, 1000*V(vthp, vthn));
+    end
+endmodule
