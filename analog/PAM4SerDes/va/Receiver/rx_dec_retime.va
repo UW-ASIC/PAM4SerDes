@@ -1,47 +1,49 @@
 `include "disciplines.vams"
 
-//! analysis tran
-//! time 0, 1e-12, 2e-12, 3e-12, 4e-12, 5e-12, 6e-12, 7e-12, 8e-12, 9e-12
-//! wave V(clk) = 0, 1, 0, 0, 1, 0, 0, 1, 0, 0
-//! wave V(msb_in) = 1, 1, 0, 0, 0, 1, 1, 1, 0, 0
-//! wave V(lsb_in) = 0, 0, 1, 1, 1, 0, 0, 1, 1, 1
-//! solve
-//! print none
+module rx_dec_retime(
+    msb_in, lsb_in,
+    clk_p, clk_n,
+    msb_out_p, msb_out_n,
+    lsb_out_p, lsb_out_n
+);
 
-module rx_dec_retime(msb_in, lsb_in, clk, msb_out, lsb_out);
+    input msb_in, lsb_in;
+    input clk_p, clk_n;
 
-    input msb_in, lsb_in, clk;
-    output msb_out, lsb_out;
+    output msb_out_p, msb_out_n;
+    output lsb_out_p, lsb_out_n;
 
-    electrical msb_in, lsb_in, clk;
-    electrical msb_out, lsb_out;
+    electrical msb_in, lsb_in;
+    electrical clk_p, clk_n;
+    electrical msb_out_p, msb_out_n;
+    electrical lsb_out_p, lsb_out_n;
 
-    parameter real vlogic = 1.0 from (0:inf);
-    parameter real vth = 0.5;
+    parameter real vth_data = 0.9;
+    parameter real vdd = 1.0 from (0:inf);
+    parameter real v_swing = 0.300 from (0:inf);
+    parameter real v_cm = vdd - v_swing / 2.0;
 
     integer msb_state;
     integer lsb_state;
 
     analog begin
-        $strobe("t=%g clk=%g MSB=%g LSB=%g",
-        $abstime, V(clk), V(msb_out), V(lsb_out));
-        
+
         @(initial_step) begin
             msb_state = 0;
             lsb_state = 0;
         end
 
-        // Detect the rising edge of the clock
-        @(cross(V(clk) - vth, +1)) begin
-            msb_state = (V(msb_in) > vth);
-            lsb_state = (V(lsb_in) > vth);
+        @(cross(V(clk_p, clk_n), +1)) begin
+            msb_state = (V(msb_in) > vth_data);
+            lsb_state = (V(lsb_in) > vth_data);
         end
 
-        // Sample the MSB and LSB inputs
-        V(msb_out) <+ msb_state * vlogic;
-        V(lsb_out) <+ lsb_state * vlogic;
+        V(msb_out_p) <+ v_cm + v_swing * (msb_state - 0.5);
+        V(msb_out_n) <+ v_cm - v_swing * (msb_state - 0.5);
 
-        // Drive the corresponding output voltages
+        V(lsb_out_p) <+ v_cm + v_swing * (lsb_state - 0.5);
+        V(lsb_out_n) <+ v_cm - v_swing * (lsb_state - 0.5);
 
     end
+
 endmodule

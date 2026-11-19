@@ -1,0 +1,71 @@
+`include "disciplines.vams"
+`include "slicer.va"
+`include "dfe1_unrolled_hr.va"
+`include "pam4_dec.va"
+
+module rx_decision(
+    vinp, vinn,
+    clk_p, clk_n,
+    msb0, lsb0,
+    msb1, lsb1
+);
+
+    input vinp, vinn, clk_p, clk_n;
+    output msb0, lsb0, msb1, lsb1;
+
+    electrical vinp, vinn;
+    electrical clk_p, clk_n;
+    electrical msb0, lsb0, msb1, lsb1;
+
+    electrical [0:23] cand_p, cand_n;
+    electrical [0:23] ref_p, ref_n;
+    electrical [0:5] therm_p, therm_n;
+
+    electrical [0:5] therm_se;
+
+    // Instantiate DFE
+    dfe1_unrolled_hr dfe(
+    clk_p, clk_n,
+    cand_p, cand_n,
+    ref_p, ref_n,
+    therm_p, therm_n
+);
+    // Instantiate phase 0 slicers
+    // Phase 0, hypothesis 0
+    slicer s0(vinp, vinn, cand_p[0], cand_n[0],
+            clk_p, clk_n, ref_p[0], ref_n[0]);
+
+    slicer s1(vinp, vinn, cand_p[1], cand_n[1],
+            clk_p, clk_n, ref_p[1], ref_n[1]);
+
+    slicer s2(vinp, vinn, cand_p[2], cand_n[2],
+            clk_p, clk_n, ref_p[2], ref_n[2]);
+
+    // Instantiate phase 1 slicers
+    slicer s0(vinp, vinn, cand_p[0], cand_n[0],
+            clk_n, clk_p, ref_p[0], ref_n[0]);
+
+    slicer s1(vinp, vinn, cand_p[1], cand_n[1],
+            clk_n, clk_p, ref_p[1], ref_n[1]);
+
+    slicer s2(vinp, vinn, cand_p[2], cand_n[2],
+            clk_n, clk_p, ref_p[2], ref_n[2]);
+    // Convert differential thermometer signals
+    genvar g;
+
+    analog begin
+        for (g = 0; g < 6; g = g + 1) begin
+            V(therm_se[g]) <+
+                (V(therm_p[g], therm_n[g]) > 0) ? 1.8 : 0.0;
+        end
+    end
+    // Instantiate PAM4 decoders
+    pam4_dec dec0(
+    therm_se[0],
+    therm_se[1],
+    therm_se[2],
+    msb0,
+    lsb0
+);
+
+endmodule
