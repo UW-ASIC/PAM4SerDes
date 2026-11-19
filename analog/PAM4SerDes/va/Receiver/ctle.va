@@ -1,0 +1,34 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// UWASIC LF shelf, cascaded with an explicitly chosen main peaking shelf.
+// Hlf(s) = hf_gain * (s+wzlf)/(s+wplf), wzlf=wplf/10^(shelf_db/20).
+// Hmain(s) = (1+s/wzm)/(1+s/wpm), wzm=wpm/10^(main_boost_db/20).
+// main_boost_db is asymptotic HF/DC gain, not gain at Nyquist.
+// The derivation does not define main-boost pole/zero locations. The bench
+// chooses a 21 GHz main pole; at 15 dB the main zero is 3.734 GHz.
+// Ideal, noiseless differential model; no rail limits or transistor bandwidth.
+module ctle(in_p, in_n, out_p, out_n);
+    input in_p, in_n;
+    output out_p, out_n;
+    electrical in_p, in_n, out_p, out_n;
+    electrical low_state, shelf_state, main_state;
+
+    parameter real pole_hz = 700e6 from (0:inf);
+    parameter real shelf_db = 1.0 from [0:30];
+    parameter real hf_gain = 1.0 from (0:inf);
+    parameter real main_boost_db = 0.0 from [0:30];
+    parameter real main_pole_hz = 21e9 from (0:inf);
+
+    analog begin
+        I(low_state) <+ V(low_state) - V(in_p, in_n);
+        I(low_state) <+ ddt(V(low_state)) / (2.0 * `M_PI * pole_hz);
+        V(shelf_state) <+ hf_gain * (V(in_p, in_n)
+            + (pow(10.0, -shelf_db/20.0) - 1.0) * V(low_state));
+
+        I(main_state) <+ V(main_state) - V(shelf_state);
+        I(main_state) <+ ddt(V(main_state)) / (2.0 * `M_PI * main_pole_hz);
+        V(out_p, out_n) <+ pow(10.0, main_boost_db/20.0) * V(shelf_state)
+            + (1.0 - pow(10.0, main_boost_db/20.0)) * V(main_state);
+    end
+endmodule

@@ -1,0 +1,35 @@
+`include "disciplines.vams"
+
+// Ideal combinational PAM4 thermometer-to-Gray decoder, one RX phase.
+// Connect AFTER slicer/DFE hypothesis selection and BEFORE decision retiming.
+// A, B, C correspond to the -100, 0, +100 mV slicer thresholds, respectively.
+// Inputs here are already LOGIC decisions, not the analog PAM4 voltages.
+// Valid codes: ABC=000,100,110,111 -> MSB/LSB=00,01,11,10.
+// Invalid codes retain the literal Boolean result; no bubble correction.
+// No clock, latching, noise, metastability, loading or supply-current model.
+module pam4_dec(a, b, c, msb, lsb);
+    input a, b, c;
+    output msb, lsb;
+    electrical a, b, c, msb, lsb;
+
+    parameter real vlow = 0.0;
+    parameter real vhigh = 1.8;
+    parameter real vth = 0.9;
+    parameter real tdelay = 0.0 from [0:inf);
+    parameter real trise = 1e-12 from (0:inf);
+    parameter real tfall = 1e-12 from (0:inf);
+    integer a_bit, b_bit, c_bit;
+    integer msb_bit, lsb_bit;
+
+    analog begin
+        // Equality is defined as logic zero. No hysteresis is introduced.
+        a_bit = (V(a) > vth);
+        b_bit = (V(b) > vth);
+        c_bit = (V(c) > vth);
+        msb_bit = b_bit;
+        lsb_bit = a_bit ^ c_bit;
+        // Finite output edges regularize switching; tdelay=0 is the ideal default.
+        V(msb) <+ transition(msb_bit ? vhigh : vlow, tdelay, trise, tfall);
+        V(lsb) <+ transition(lsb_bit ? vhigh : vlow, tdelay, trise, tfall);
+    end
+endmodule
