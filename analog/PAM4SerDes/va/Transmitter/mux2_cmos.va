@@ -1,0 +1,27 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// 2:1 voltage mux with a resistive output driver and output capacitance
+// rout and cout are estimated values, created before given green-light assuming ideal
+
+module mux2_cmos(in0, in1, sel, out);
+    input in0, in1, sel;
+    output out;
+    electrical in0, in1, sel, out;
+
+    parameter real vth = 0.35;
+    parameter real vsmooth = 0.01 from (0:inf);
+    parameter real rout = 100 from (0:inf);
+    parameter real cout = 20e-15 from [0:inf);
+
+    real weight;
+    real vdrive;
+
+    analog begin
+        weight = 0.5 * (1.0 + tanh((V(sel) - vth) / vsmooth));
+        vdrive = (1.0 - weight) * V(in0) + weight * V(in1);
+
+        I(out) <+ (V(out) - vdrive) / rout;
+        I(out) <+ cout * ddt(V(out));
+    end
+endmodule
