@@ -1,0 +1,55 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Transparent differential 2:1 CML mux; above vos_clk selects EVEN, below ODD.
+// Inputs must remain stable throughout their selected half-cycle.
+// Use a 7 GHz clock for 2 x 7 -> 14 Gb/s, or 14 GHz for 2 x 14 -> 28 Gb/s.
+// Behavioral timing and electrical defaults are provisional.
+module mux2_cml_hr (
+    de_p, de_n, do_p, do_n, clk_p, clk_n, out_p, out_n, vdd, vss
+);
+    // de/do are EVEN/ODD differential inputs; positive differential data is 1.
+    input de_p, de_n, do_p, do_n, clk_p, clk_n;
+    output out_p, out_n;
+    inout vdd, vss;
+    electrical de_p, de_n, do_p, do_n, clk_p, clk_n;
+    electrical out_p, out_n, vdd, vss;
+
+    parameter real itail = 1.5e-3 from (0:inf); // A, total sink current per output pair
+    parameter real rload = 200.0 from (0:inf); // ohms per leg to VDD; default unloaded swing is 0.6 Vppd
+    parameter real cout = 5.0e-15 from [0:inf); // F per leg to VSS; adds RC settling beyond tpd
+    parameter real vsoft_data = 10.0e-3 from (0:inf); // V, data switching width
+    parameter real vsoft_clk = 10.0e-3 from (0:inf); // V, clock switching width
+    parameter real vos_data = 0.0; // V, differential data offset
+    parameter real vos_clk = 0.0; // V, differential clock offset
+    parameter real tpd = 5.934e-12 from [0:inf); // s, transport delay (project estimate)
+    parameter real max_step = 0.5e-12 from (0:inf); // s, simulation step bound
+
+    real select_even, even_level, odd_level, steering, delayed_steering;
+
+    analog begin
+        $bound_step(max_step);
+
+        // Smooth selection blends the inputs around the clock threshold.
+        select_even = 0.5 * (1.0 + tanh((V(clk_p, clk_n) - vos_clk)
+                                      / vsoft_clk));
+
+        even_level = tanh((V(de_p, de_n) - vos_data) / vsoft_data);
+        odd_level  = tanh((V(do_p, do_n) - vos_data) / vsoft_data);
+
+        steering = select_even * even_level + (1.0 - select_even) * odd_level;
+
+        delayed_steering = absdelay(steering, tpd);
+
+        // Unloaded DC: Vdiff = itail*rload*steering; Vcm = VDD-itail*rload/2.
+        // Positive steering sinks current on N, producing positive Vdiff.
+        I(out_p, vdd) <+ V(out_p, vdd) / rload;
+        I(out_n, vdd) <+ V(out_n, vdd) / rload;
+
+        I(out_p, vss) <+ 0.5 * itail * (1.0 - delayed_steering);
+        I(out_n, vss) <+ 0.5 * itail * (1.0 + delayed_steering);
+
+        I(out_p, vss) <+ cout * ddt(V(out_p, vss));
+        I(out_n, vss) <+ cout * ddt(V(out_n, vss));
+    end
+endmodule

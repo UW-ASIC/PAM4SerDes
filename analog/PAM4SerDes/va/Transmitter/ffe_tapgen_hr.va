@@ -1,0 +1,150 @@
+`include "constants.vams"
+`include "disciplines.vams"
+
+// Half-rate tap generator: capture E[k]=x[2k] and O[k]=x[2k+1] on rising clk14.
+// Three external muxes serialize PRE/MAIN/POST, selecting EVEN on positive clock.
+// Update each bank while unselected; pair k is emitted in clock period k+1.
+// After this common latency: PRE=x[n], MAIN=x[n-1], POST=x[n-2] (1 UI spacing).
+// Instantiate once per binary path (MSB and mapped LSB). Tap weights/signs
+// and PAM4 summation require a downstream driver with all three tap inputs.
+// Behavioral timing and electrical defaults are provisional.
+module ffe_tapgen_hr (
+    de_p, de_n, do_p, do_n, clk_p, clk_n, rst,
+    pre_e_p, pre_e_n, pre_o_p, pre_o_n,
+    main_e_p, main_e_n, main_o_p, main_o_n,
+    post_e_p, post_e_n, post_o_p, post_o_n, vdd, vss
+);
+    // rst is asynchronous, active high relative to VSS; each p/n pair is one signal.
+    input de_p, de_n, do_p, do_n, clk_p, clk_n, rst;
+    output pre_e_p, pre_e_n, pre_o_p, pre_o_n;
+    output main_e_p, main_e_n, main_o_p, main_o_n;
+    output post_e_p, post_e_n, post_o_p, post_o_n;
+    inout vdd, vss;
+    electrical de_p, de_n, do_p, do_n, clk_p, clk_n, rst;
+    electrical pre_e_p, pre_e_n, pre_o_p, pre_o_n;
+    electrical main_e_p, main_e_n, main_o_p, main_o_n;
+    electrical post_e_p, post_e_n, post_o_p, post_o_n, vdd, vss;
+
+    parameter real itail = 1.5e-3 from (0:inf); // A per differential output pair
+    parameter real rload = 200.0 from (0:inf); // ohms per leg to VDD; default unloaded swing is 0.6 Vppd
+    parameter real t_cq = 2.0e-12 from [0:inf); // s, state-to-output delay, including reset
+    parameter real tr = 2.0e-12 from (0:inf); // s, output-control rise time
+    parameter real tf = 2.0e-12 from (0:inf); // s, output-control fall time
+    parameter real vth_data = 0.0; // V, differential data threshold
+    parameter real vth_clk = 0.0; // V; match final-mux vos_clk
+    parameter real vth_rst = 0.35; // V relative to VSS; fixed, does not track VDD
+    parameter real ttol = 1.0e-15 from (0:inf); // s, crossing time tolerance
+    parameter real vtol = 1.0e-6 from (0:inf); // V, crossing voltage tolerance
+    parameter real max_step = 0.5e-12 from (0:inf); // s, simulation step bound
+    parameter integer init_bit = 0 from [0:1]; // startup/reset bit for banks and history
+
+    // Stored bits use -1/+1. History holds the previous E/O pair.
+    integer history_e, history_o, captured_e, captured_o;
+
+    // After capture: EVEN transfers at the following falling edge; ODD at next rising.
+    integer pending_pre_o, pending_main_o, pending_post_o;
+    integer pending_pre_e, pending_main_e, pending_post_e;
+
+    integer q_pre_e, q_pre_o, q_main_e, q_main_o, q_post_e, q_post_o;
+
+    real s_pre_e, s_pre_o, s_main_e, s_main_o, s_post_e, s_post_o;
+
+    analog begin
+        $bound_step(max_step);
+
+        // Clear history, pending taps and both banks even when the clock is stopped.
+        @(initial_step or cross(V(rst,vss) - vth_rst, +1, ttol, vtol)) begin
+            history_e = 2 * init_bit - 1;
+            history_o = 2 * init_bit - 1;
+            captured_e = 2 * init_bit - 1;
+            captured_o = 2 * init_bit - 1;
+            pending_pre_e = 2 * init_bit - 1;
+            pending_main_e = 2 * init_bit - 1;
+            pending_post_e = 2 * init_bit - 1;
+            pending_pre_o = 2 * init_bit - 1;
+            pending_main_o = 2 * init_bit - 1;
+            pending_post_o = 2 * init_bit - 1;
+            q_pre_e = 2 * init_bit - 1;
+            q_pre_o = 2 * init_bit - 1;
+            q_main_e = 2 * init_bit - 1;
+            q_main_o = 2 * init_bit - 1;
+            q_post_e = 2 * init_bit - 1;
+            q_post_o = 2 * init_bit - 1;
+        end
+
+        // Both inputs must be settled here; setup/hold and metastability are not modeled.
+        @(cross(V(clk_p,clk_n) - vth_clk, +1, ttol, vtol)) begin
+            if (V(rst,vss) < vth_rst) begin
+                // Refresh unselected ODD from the previous capture BEFORE replacing pending.
+                q_pre_o = pending_pre_o;
+                q_main_o = pending_main_o;
+                q_post_o = pending_post_o;
+                captured_e = (V(de_p,de_n) > vth_data) ? 1 : -1;
+                captured_o = (V(do_p,do_n) > vth_data) ? 1 : -1;
+
+                // EVEN serial position 2k: x[2k], x[2k-1], x[2k-2].
+                pending_pre_e = captured_e;
+                pending_main_e = history_o;
+                pending_post_e = history_e;
+
+                // ODD serial position 2k+1: x[2k+1], x[2k], x[2k-1].
+                pending_pre_o = captured_o;
+                pending_main_o = captured_e;
+                pending_post_o = history_o;
+                // Replace history only after both tap sets have used the previous pair.
+                history_e = captured_e;
+                history_o = captured_o;
+            end
+        end
+
+        // Refresh unselected EVEN; do not resample inputs. Both banks need
+        // t_cq + transition time to fit within their unselected half-cycle.
+        @(cross(V(clk_p,clk_n) - vth_clk, -1, ttol, vtol)) begin
+            if (V(rst,vss) < vth_rst) begin
+                q_pre_e = pending_pre_e;
+                q_main_e = pending_main_e;
+                q_post_e = pending_post_e;
+            end
+        end
+
+        // Smooth held states outside event handlers.
+        s_pre_e = transition(q_pre_e, t_cq, tr, tf);
+        s_pre_o = transition(q_pre_o, t_cq, tr, tf);
+        s_main_e = transition(q_main_e, t_cq, tr, tf);
+        s_main_o = transition(q_main_o, t_cq, tr, tf);
+        s_post_e = transition(q_post_e, t_cq, tr, tf);
+        s_post_o = transition(q_post_o, t_cq, tr, tf);
+
+        // Six unweighted CML pairs: unloaded Vdiff = +/-itail*rload,
+        // Vcm relative to VSS = V(vdd,vss)-itail*rload/2. No headroom model.
+        I(pre_e_p, vdd) <+ V(pre_e_p, vdd) / rload;
+        I(pre_e_n, vdd) <+ V(pre_e_n, vdd) / rload;
+        I(pre_e_p, vss) <+ 0.5 * itail * (1.0 - s_pre_e);
+        I(pre_e_n, vss) <+ 0.5 * itail * (1.0 + s_pre_e);
+
+        I(pre_o_p, vdd) <+ V(pre_o_p, vdd) / rload;
+        I(pre_o_n, vdd) <+ V(pre_o_n, vdd) / rload;
+        I(pre_o_p, vss) <+ 0.5 * itail * (1.0 - s_pre_o);
+        I(pre_o_n, vss) <+ 0.5 * itail * (1.0 + s_pre_o);
+
+        I(main_e_p, vdd) <+ V(main_e_p, vdd) / rload;
+        I(main_e_n, vdd) <+ V(main_e_n, vdd) / rload;
+        I(main_e_p, vss) <+ 0.5 * itail * (1.0 - s_main_e);
+        I(main_e_n, vss) <+ 0.5 * itail * (1.0 + s_main_e);
+
+        I(main_o_p, vdd) <+ V(main_o_p, vdd) / rload;
+        I(main_o_n, vdd) <+ V(main_o_n, vdd) / rload;
+        I(main_o_p, vss) <+ 0.5 * itail * (1.0 - s_main_o);
+        I(main_o_n, vss) <+ 0.5 * itail * (1.0 + s_main_o);
+
+        I(post_e_p, vdd) <+ V(post_e_p, vdd) / rload;
+        I(post_e_n, vdd) <+ V(post_e_n, vdd) / rload;
+        I(post_e_p, vss) <+ 0.5 * itail * (1.0 - s_post_e);
+        I(post_e_n, vss) <+ 0.5 * itail * (1.0 + s_post_e);
+
+        I(post_o_p, vdd) <+ V(post_o_p, vdd) / rload;
+        I(post_o_n, vdd) <+ V(post_o_n, vdd) / rload;
+        I(post_o_p, vss) <+ 0.5 * itail * (1.0 - s_post_o);
+        I(post_o_n, vss) <+ 0.5 * itail * (1.0 + s_post_o);
+    end
+endmodule
