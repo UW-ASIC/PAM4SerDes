@@ -1,0 +1,169 @@
+//! sweep V(vref) = 0.54, 0.66
+//! bias V(vdd) = 1.25, V(en) = 1.25
+//! bias V(i_msb_pre) = 0.6, V(i_msb_main) = 0.6, V(i_msb_post) = 0.6
+//! bias V(i_lsb_pre) = 0.6, V(i_lsb_main) = 0.6, V(i_lsb_post) = 0.6
+//! bias V(i_pdrv) = 0.6
+//! solve
+//! print none
+
+// ---------------------------------------------------------------------------
+// tx_bias : Transmitter bias generator (PAM4 SerDes, TX side)
+// Owner   : Krrish
+//
+// Generates the tail currents for the TX CML cells:
+//   * the 6 PAM4-driver tail currents (MSB/LSB x pre/main/post FFE taps)
+//   * the pre-driver CML tail current
+//
+// Spec (UWASIC wiki, "Mathematical Derivation" -> PAM4 Driver):
+//   Swing        0.8 Vppd into 50 ohm || 50 ohm = 25 ohm
+//   I_total    = Vppd / (2 * 25) = 16 mA
+//   MSB : LSB  = 2 : 1          -> 10.67 mA / 5.33 mA
+//   FFE taps   = -0.05 / +0.80 / -0.15  (|w| sums to 1)
+//                MSB  0.53 / 8.53 / 1.60 mA
+//                LSB  0.27 / 4.27 / 0.80 mA
+//   Output-stage supply 1.25 V
+//
+// Architecture being modelled ("Verilog A Circuits" -> Bias):
+//   current reference + mirrors, with swing control by a replica cell + op-amp.
+//
+//   swing_loop = 1 (replica loop, default):
+//       an op-amp forces the replica swing  I_total * R_term  to equal
+//       vppd * V(vref)/vref_nom, so the output swing tracks the reference and
+//       is independent of the actual termination value (rterm_act).
+//   swing_loop = 0 (open loop, plain mirror):
+//       I_total = (vppd / rterm_nom) * V(vref)/vref_nom, so the swing
+//       changes with any termination error.
+//
+// Outputs are current SINKS (NMOS-tail behaviour): current flows INTO each
+// i_* pin and out of vss. Each has finite compliance (vdsat) and output
+// resistance (rout). Tap signs (pre/post negative) are applied by how the
+// driver steers the current, not here; every current is positive magnitude.
+// ---------------------------------------------------------------------------
+
+`include "disciplines.vams"
+`include "constants.vams"
+
+// current sink with soft compliance: full current once V(out) >> vdsat
+`define SINK(itgt, vo) (((vo) > 0.0) ? (itgt) * tanh((vo) / vdsat) : 0.0)
+
+module tx_bias(vdd, vss, en, vref,
+               i_msb_pre, i_msb_main, i_msb_post,
+               i_lsb_pre, i_lsb_main, i_lsb_post,
+               i_pdrv, pgood);
+
+    inout vdd, vss;
+    input en, vref;
+    inout i_msb_pre, i_msb_main, i_msb_post;
+    inout i_lsb_pre, i_lsb_main, i_lsb_post;
+    inout i_pdrv;
+    output pgood;
+
+    electrical vdd, vss, en, vref;
+    electrical i_msb_pre, i_msb_main, i_msb_post;
+    electrical i_lsb_pre, i_lsb_main, i_lsb_post;
+    electrical i_pdrv, pgood;
+    electrical en_int;                               // internal node: enable settling (RC)
+
+    // ---- swing / termination ------------------------------------------------
+    parameter real vppd      = 0.8   from [0.7:0.9]; // target diff p-p swing (spec 0.7-0.9 V)
+    parameter real rterm_nom = 50.0  from (0:inf);   // nominal termination per side
+    parameter real rterm_act = 50.0  from (0:inf);   // actual termination (process / cal)
+    parameter integer swing_loop = 1 from [0:1];     // 1 = replica + op-amp loop, 0 = open-loop mirror
+
+    // ---- FFE tap weights (magnitudes) --------------------------------------
+    parameter real w_pre  = 0.05 from [0:1];
+    parameter real w_main = 0.80 from [0:1];
+    parameter real w_post = 0.15 from [0:1];
+
+    // ---- MSB : LSB weighting -------------------------------------------------
+    parameter real msb_ratio = 2.0 from (0:inf);     // I_MSB / I_LSB
+    parameter real ratio_err = 0.0 from (-0.5:0.5);  // fractional MSB mirror error (for RLM studies)
+
+    // ---- pre-driver tail -----------------------------------------------------
+    parameter real vod_pd  = 0.2   from (0:inf);     // pre-driver diff swing (predriver_cml.va)
+    parameter real rld_pd  = 200.0 from (0:inf);     // pre-driver load resistor (assumed)
+    parameter integer n_pd = 6     from [1:64];      // number of pre-driver cells fed by i_pdrv
+
+    // ---- reference / supply ----------------------------------------------------
+    parameter real vref_nom = 0.6  from (0:inf);     // nominal reference (e.g. bandgap-derived)
+    parameter real vdd_min  = 1.0  from (0:inf);     // min supply for full current
+    parameter real vdd_w    = 0.03 from (0:inf);     // width of supply-OK transition
+    parameter real ven_th   = 0.6;                   // enable logic threshold
+    parameter real ven_w    = 0.02 from (0:inf);     // enable threshold sharpness
+    parameter real psrr_db  = 40.0 from (0:inf);     // supply sensitivity of the reference path
+    parameter real vdd_nom  = 1.25 from (0:inf);
+
+    // ---- output devices --------------------------------------------------------
+    parameter real vdsat = 0.15 from (0:inf);        // compliance knee of tail devices
+    parameter real rout  = 1e6  from (0:inf);        // output resistance of each (cascoded) mirror
+    parameter real t_en  = 1n   from (0:inf);        // enable settling time constant (RC tau)
+
+    // ---- pgood output ----------------------------------------------------------
+    parameter real vpg_hi = 1.25;
+    parameter real vpg_lo = 0.0;
+
+    real vsup, vrefn, en_d, sup_ok, line;
+    real i_total, i_msb, i_lsb, i_pd;
+    real k_msb, k_lsb;
+    real gate;
+
+    analog begin
+
+        vsup  = V(vdd, vss);
+        vrefn = V(vref, vss) / vref_nom;           // normalised reference (1.0 nominal)
+        if (vrefn < 0.0) vrefn = 0.0;
+
+        // enable: smooth threshold, then first-order settling (tau = t_en) on
+        // an internal node:  V(en_int) + t_en * dV(en_int)/dt = en_s
+        I(en_int) <+ V(en_int) - 0.5 * (1.0 + tanh((V(en, vss) - ven_th) / ven_w));
+        I(en_int) <+ ddt(t_en * V(en_int));
+        en_d = V(en_int);
+        if (en_d < 0.0) en_d = 0.0;
+        if (en_d > 1.0) en_d = 1.0;
+
+        // supply headroom: smooth turn-on around vdd_min
+        sup_ok = 0.5 * (1.0 + tanh((vsup - vdd_min) / vdd_w));
+
+        // finite supply rejection of the reference path
+        line = 1.0 + (vsup - vdd_nom) / vdd_nom * pow(10.0, -psrr_db / 20.0);
+
+        gate = en_d * sup_ok;
+
+        // ---- total driver current ----------------------------------------------
+        // PAM4 driver: Vppd = 2 * I_total * (R/2)  ->  I_total = Vppd / R
+        if (swing_loop == 1)
+            i_total = vppd * vrefn * line / rterm_act;   // replica tracks real termination
+        else
+            i_total = vppd * vrefn * line / rterm_nom;   // plain mirror
+
+        // ---- MSB / LSB split (2:1 by default) -------------------------------------
+        k_msb = msb_ratio / (msb_ratio + 1.0);
+        k_lsb = 1.0       / (msb_ratio + 1.0);
+        i_msb = i_total * k_msb * (1.0 + ratio_err);
+        i_lsb = i_total * k_lsb;
+
+        // ---- pre-driver tail ---------------------------------------------------
+        // CML pre-driver: Vod = I_tail * R_load  ->  I_tail = Vod / R_load (per cell)
+        i_pd = n_pd * (vod_pd / rld_pd) * vrefn * line;
+
+        // ---- outputs: current sinks into vss -------------------------------------
+        I(i_msb_pre,  vss) <+ gate * `SINK(i_msb * w_pre, V(i_msb_pre,  vss)) + V(i_msb_pre,  vss) / rout;
+        I(i_msb_main, vss) <+ gate * `SINK(i_msb * w_main, V(i_msb_main, vss)) + V(i_msb_main, vss) / rout;
+        I(i_msb_post, vss) <+ gate * `SINK(i_msb * w_post, V(i_msb_post, vss)) + V(i_msb_post, vss) / rout;
+        I(i_lsb_pre,  vss) <+ gate * `SINK(i_lsb * w_pre, V(i_lsb_pre,  vss)) + V(i_lsb_pre,  vss) / rout;
+        I(i_lsb_main, vss) <+ gate * `SINK(i_lsb * w_main, V(i_lsb_main, vss)) + V(i_lsb_main, vss) / rout;
+        I(i_lsb_post, vss) <+ gate * `SINK(i_lsb * w_post, V(i_lsb_post, vss)) + V(i_lsb_post, vss) / rout;
+        I(i_pdrv,     vss) <+ gate * `SINK(i_pd, V(i_pdrv,     vss)) + V(i_pdrv,     vss) / rout;
+
+        // supply current drawn by the bias core itself (reference branch, ~1% overhead)
+        I(vdd, vss) <+ gate * 0.01 * (i_total + i_pd);
+
+        // power-good flag: high once enabled and the supply has headroom
+        V(pgood, vss) <+ vpg_lo + (vpg_hi - vpg_lo) * 0.5 * (1.0 + tanh((gate - 0.9) / 0.01));
+
+        $strobe("tx_bias: Itot = %g mA  MSB = %g mA  LSB = %g mA  Ipd = %g mA  gate = %g",
+                1e3 * i_total * gate, 1e3 * i_msb * gate, 1e3 * i_lsb * gate,
+                1e3 * i_pd * gate, gate);
+    end
+
+endmodule
