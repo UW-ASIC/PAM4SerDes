@@ -1,0 +1,268 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 866" width="1000" height="866" role="img" aria-labelledby="t d"
+     font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace" font-size="12">
+  <title id="t">Receiver: from the pads to two 32-bit words</title>
+  <desc id="d">rx_p / rx_n go through rx_term (100 ohm differential, reference vtt), ctle (peaking equalizer) and vga (gain set by vctrl). The output afe_p / afe_n feeds 24 slicers and rx_cdr. The slicers are two groups of 12: phase 0 samples on clk14 rising, phase 1 on clk14 falling. Each group is 3 thresholds (+100, 0, -100 mV) times 4 guesses of the previous symbol (-3, -1, +1, +3). dfe1_unrolled_hr drives the 24 slicer references and, per phase, keeps the 3 outputs whose guess matches the previous symbol. One pam4_dec per phase turns the 3 bits into an MSB and an LSB, and one rx_dec_retime per phase retimes them. Each binary path then has an rx_deser_path: 2 lanes at 14 Gb/s, 2 demux2_cml on clk7 give 4 at 7, 4 demux2_cml on clk3p5 give 8 at 3.5, a CML to CMOS conversion, 8 demux2_cmos on clk1p75 give 16 at 1.75, 16 demux2_cmos on clk0p875 give 32 at 0.875, and an output register on clk0p875 gives rxd_m[0:31] or rxd_l[0:31].</desc>
+
+  <!-- Source of analog/PAM4SerDes/docs/img/receiver.svg: plain boxes, straight connectors, text.
+       Edit this file, then run  python3 docs/diagrams/sketch.py  to redraw the hand-drawn version.
+       The colours and fonts below are only for looking at this file directly; sketch.py brings
+       its own. The five sources share the style block, the markers and the legend.
+
+       Deserializer rows: 46 apart. In a row at y: stage tag, cell (x 98..294), clock (text
+       from x 324), lane strip (x 506..602) and its label.
+       Lane strips: one strip is 96 wide and stands for the path's 28 Gb/s. It is a 20-thick
+       line whose dashes are the lanes: N lanes -> stroke-dasharray "(96/N - 1) 1". -->
+  <style>
+    text   { fill: #1f2328; }
+    .title { font-size: 18px; font-weight: 700; }
+    .name  { font-size: 13px; font-weight: 700; }
+    .note  { fill: #57606a; }
+    .cmos  { fill: #dbeafe; stroke: #1d4ed8; }  /* CMOS logic, single-ended 0 / 0.7 V */
+    .cml   { fill: #ffedd5; stroke: #c2410c; }  /* CML, differential */
+    .ana   { fill: #dcfce7; stroke: #15803d; }  /* analog */
+    .clk   { fill: #f3e8ff; stroke: #7e22ce; }  /* clock generation */
+    .mix   { fill: url(#cmos2cml); stroke: #57606a; }  /* CMOS on one side, CML on the other */
+    .ext   { fill: #eaeef2; stroke: #6e7781; }  /* not on the chip, or ideal glue */
+    .ph    { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 6 3; }  /* placeholder cell */
+    .box   { fill: #ffffff; stroke: #8c959f; }  /* container: a structural block */
+    .w     { fill: none; stroke: #1f2328; stroke-width: 1.5; }  /* signal */
+    .wd    { fill: none; stroke: #1f2328; stroke-width: 2.5; }  /* main data path */
+    .wc    { fill: none; stroke: #7e22ce; stroke-width: 1.5; }  /* clock */
+    .wb    { fill: none; stroke: #15803d; stroke-width: 1.5; stroke-dasharray: 5 3; }  /* bias current */
+    .mid   { text-anchor: middle; }
+    .end   { text-anchor: end; }
+    .tag   { fill: #eaeef2; }
+    .ck    { fill: #7e22ce; font-weight: 700; }
+    .lane  { fill: none; stroke-width: 20; }
+    .lc    { stroke: #93c5fd; }  /* CMOS lanes */
+    .ll    { stroke: #fdba74; }  /* CML lanes */
+    .p0    { fill: #d0d7de; stroke: #57606a; }  /* phase 0 */
+    .p1    { fill: #ffffff; stroke: #57606a; }  /* phase 1 */
+    .pick  { fill: #fb923c; stroke: #7c2d12; stroke-width: 1.5; }  /* the slicers the DFE keeps */
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#1f2328"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7e22ce"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#15803d"/></marker>
+    <linearGradient id="cmos2cml"><stop offset="0.5" stop-color="#dbeafe"/><stop offset="0.5" stop-color="#ffedd5"/></linearGradient>
+    <linearGradient id="cml2cmos_down" x1="0" y1="0" x2="0" y2="1"><stop offset="0.5" stop-color="#ffedd5"/><stop offset="0.5" stop-color="#dbeafe"/></linearGradient>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="999" height="865" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="24" y="34" class="title">Receiver: from the pads to two 32-bit words</text>
+  <text x="24" y="54" class="note">Half rate: the rising edges of clk14 sample every other symbol (phase 0), the falling edges the ones between (phase 1).</text>
+
+  <!-- ===== the two sampling phases ===== -->
+  <text x="308" y="90" class="ck">clk14</text>
+  <path class="wc" d="M372,94 H396 V78 H444 V94 H492 V78 H540 V94 H588 V78 H636 V94 H684 V78 H732 V94 H780 V78 H828 V94 H876 V78 H924 V94 H972"/>
+  <text x="308" y="116">symbol</text>
+  <g font-size="12" text-anchor="middle">
+    <rect class="p0" x="372" y="102" width="48" height="20"/><text x="396" y="116">ph 0</text>
+    <rect class="p1" x="420" y="102" width="48" height="20"/><text x="444" y="116">ph 1</text>
+    <rect class="p0" x="468" y="102" width="48" height="20"/><text x="492" y="116">ph 0</text>
+    <rect class="p1" x="516" y="102" width="48" height="20"/><text x="540" y="116">ph 1</text>
+    <rect class="p0" x="564" y="102" width="48" height="20"/><text x="588" y="116">ph 0</text>
+    <rect class="p1" x="612" y="102" width="48" height="20"/><text x="636" y="116">ph 1</text>
+    <rect class="p0" x="660" y="102" width="48" height="20"/><text x="684" y="116">ph 0</text>
+    <rect class="p1" x="708" y="102" width="48" height="20"/><text x="732" y="116">ph 1</text>
+    <rect class="p0" x="756" y="102" width="48" height="20"/><text x="780" y="116">ph 0</text>
+    <rect class="p1" x="804" y="102" width="48" height="20"/><text x="828" y="116">ph 1</text>
+    <rect class="p0" x="852" y="102" width="48" height="20"/><text x="876" y="116">ph 0</text>
+    <rect class="p1" x="900" y="102" width="48" height="20"/><text x="924" y="116">ph 1</text>
+  </g>
+
+  <rect class="pick" x="24" y="74" width="14" height="12" rx="2"/>
+  <text x="44" y="85" class="note">slicers the DFE keeps (an example)</text>
+
+  <!-- ===== analog front end (rx_afe), top to bottom ===== -->
+  <text x="193" y="118" class="note mid">28 GBd PAM4 from the channel</text>
+  <text x="193" y="136" class="name mid">rx_p / rx_n</text>
+  <path class="wd" marker-end="url(#a)" d="M193,142 V156"/>
+  <rect class="ana" x="120" y="156" width="146" height="44" rx="4"/>
+  <text x="193" y="175" class="name mid">rx_term</text>
+  <text x="193" y="192" class="note mid">100 Ω differential</text>
+  <text x="92" y="182" class="end">vtt</text>
+  <path class="w" marker-end="url(#a)" d="M98,178 H120"/>
+  <path class="wd" marker-end="url(#a)" d="M193,200 V226"/>
+  <rect class="ana" x="120" y="226" width="146" height="44" rx="4"/>
+  <text x="193" y="245" class="name mid">ctle</text>
+  <text x="193" y="262" class="note mid">peaking equalizer</text>
+  <path class="wd" marker-end="url(#a)" d="M193,270 V296"/>
+  <rect class="ana" x="120" y="296" width="146" height="44" rx="4"/>
+  <text x="193" y="315" class="name mid">vga</text>
+  <text x="193" y="332" class="note mid">gain set by vctrl</text>
+  <text x="92" y="322" class="end">vctrl</text>
+  <text x="92" y="337" class="note end">0 to 0.7 V</text>
+  <path class="w" marker-end="url(#a)" d="M98,318 H120"/>
+  <text x="24" y="364" class="note">levels at the slicers: ±150, ±50 mV</text>
+
+  <!-- afe_p / afe_n: to both slicer groups and to the CDR -->
+  <path class="wd" marker-end="url(#a)" d="M266,318 H308"/>
+  <path class="wd" marker-end="url(#a)" d="M288,318 V198 H308"/>
+  <circle cx="288" cy="318" r="3.5" fill="#1f2328"/>
+  <text x="296" y="250">afe_p / afe_n</text>
+  <path class="w" marker-end="url(#a)" d="M288,318 V378"/>
+  <text x="280" y="384" class="end">also to rx_cdr</text>
+
+  <!-- ===== phase 0 ===== -->
+  <rect class="p0" x="308" y="136" width="12" height="12"/>
+  <text x="326" y="146">phase 0, clk14 rising: 3 thresholds (rows) x 4 guesses of the previous symbol (columns)</text>
+  <rect class="box" x="308" y="152" width="182" height="80" rx="4"/>
+  <g class="note" text-anchor="middle"><text x="369" y="166">-3</text><text x="403" y="166">-1</text><text x="437" y="166">+1</text><text x="471" y="166">+3</text></g>
+  <g class="note" text-anchor="end"><text x="350" y="166">mV</text><text x="350" y="184">+100</text><text x="350" y="203">0</text><text x="350" y="222">-100</text></g>
+  <g class="cml">
+    <rect x="354" y="172" width="30" height="15" rx="2"/><rect x="388" y="172" width="30" height="15" rx="2"/><rect x="456" y="172" width="30" height="15" rx="2"/>
+    <rect x="354" y="191" width="30" height="15" rx="2"/><rect x="388" y="191" width="30" height="15" rx="2"/><rect x="456" y="191" width="30" height="15" rx="2"/>
+    <rect x="354" y="210" width="30" height="15" rx="2"/><rect x="388" y="210" width="30" height="15" rx="2"/><rect x="456" y="210" width="30" height="15" rx="2"/>
+  </g>
+  <g class="pick"><rect x="422" y="172" width="30" height="15" rx="2"/><rect x="422" y="191" width="30" height="15" rx="2"/><rect x="422" y="210" width="30" height="15" rx="2"/></g>
+  <path class="wd" marker-end="url(#a)" d="M490,186 H518"/>
+  <path class="w" marker-end="url(#a)" d="M518,212 H490"/>
+
+  <!-- ===== phase 1 ===== -->
+  <rect class="p1" x="308" y="256" width="12" height="12"/>
+  <text x="326" y="266">phase 1, clk14 falling</text>
+  <rect class="box" x="308" y="272" width="182" height="80" rx="4"/>
+  <g class="note" text-anchor="middle"><text x="369" y="286">-3</text><text x="403" y="286">-1</text><text x="437" y="286">+1</text><text x="471" y="286">+3</text></g>
+  <g class="note" text-anchor="end"><text x="350" y="286">mV</text><text x="350" y="304">+100</text><text x="350" y="323">0</text><text x="350" y="342">-100</text></g>
+  <g class="cml">
+    <rect x="354" y="292" width="30" height="15" rx="2"/><rect x="422" y="292" width="30" height="15" rx="2"/><rect x="456" y="292" width="30" height="15" rx="2"/>
+    <rect x="354" y="311" width="30" height="15" rx="2"/><rect x="422" y="311" width="30" height="15" rx="2"/><rect x="456" y="311" width="30" height="15" rx="2"/>
+    <rect x="354" y="330" width="30" height="15" rx="2"/><rect x="422" y="330" width="30" height="15" rx="2"/><rect x="456" y="330" width="30" height="15" rx="2"/>
+  </g>
+  <g class="pick"><rect x="388" y="292" width="30" height="15" rx="2"/><rect x="388" y="311" width="30" height="15" rx="2"/><rect x="388" y="330" width="30" height="15" rx="2"/></g>
+  <path class="wd" marker-end="url(#a)" d="M490,306 H518"/>
+  <path class="w" marker-end="url(#a)" d="M518,332 H490"/>
+
+  <!-- ===== DFE, decoders, retimers ===== -->
+  <rect class="cml" x="518" y="152" width="152" height="200" rx="4"/>
+  <text x="594" y="214" class="name mid">dfe1_unrolled_hr</text>
+  <g class="note" text-anchor="middle">
+    <text x="594" y="232">1-tap, unrolled</text>
+    <text x="594" y="252">drives the 24 slicer</text>
+    <text x="594" y="267">references</text>
+    <text x="594" y="287">per phase, keeps the</text>
+    <text x="594" y="302">column that matches</text>
+    <text x="594" y="317">the previous symbol</text>
+  </g>
+
+  <path class="wd" marker-end="url(#a)" d="M670,198 H722"/>
+  <text x="696" y="191" class="mid">3 bits</text>
+  <rect class="cmos" x="722" y="176" width="92" height="44" rx="4"/>
+  <text x="768" y="195" class="name mid">pam4_dec</text>
+  <text x="768" y="212" class="note mid">→ MSB, LSB</text>
+  <path class="wd" marker-end="url(#a)" d="M814,198 H834"/>
+  <rect class="mix" x="834" y="176" width="130" height="44" rx="4"/>
+  <text x="899" y="195" class="name mid">rx_dec_retime</text>
+  <text x="899" y="212" class="note mid">retime, → CML</text>
+
+  <path class="wd" marker-end="url(#a)" d="M670,318 H722"/>
+  <text x="696" y="311" class="mid">3 bits</text>
+  <rect class="cmos" x="722" y="296" width="92" height="44" rx="4"/>
+  <text x="768" y="315" class="name mid">pam4_dec</text>
+  <text x="768" y="332" class="note mid">→ MSB, LSB</text>
+  <path class="wd" marker-end="url(#a)" d="M814,318 H834"/>
+  <rect class="mix" x="834" y="296" width="130" height="44" rx="4"/>
+  <text x="899" y="315" class="name mid">rx_dec_retime</text>
+  <text x="899" y="332" class="note mid">retime, → CML</text>
+
+  <!-- ===== rx_deser_path ===== -->
+  <rect class="box" x="40" y="402" width="944" height="333" rx="6"/>
+  <text x="52" y="421"><tspan class="name">rx_deser_path</tspan> one binary path. There are two:</text>
+  <text x="52" y="437" class="note">the MSB path gives rxd_m, the LSB path gives rxd_l.</text>
+
+  <!-- the regrouping: the retimers work per phase, the deserializers per bit -->
+  <path class="wd" marker-end="url(#a)" d="M894,340 V369 H530 V420"/>
+  <text x="610" y="363">the MSB bit of phase 1</text>
+  <path class="wd" marker-end="url(#a)" d="M964,198 H976 V395 H578 V420"/>
+  <text x="610" y="388">the MSB bit of phase 0</text>
+
+  <path class="lane ll" stroke-dasharray="47 1" d="M506,430 H602"/>
+  <text x="618" y="427" class="name">2 lanes x 14 Gb/s</text>
+  <text x="618" y="442" class="note">one lane from each phase: this path's bit</text>
+
+  <!-- S1 -->
+  <rect class="tag" x="46" y="465" width="44" height="22" rx="11"/><text x="68" y="481" class="name mid">S1</text>
+  <rect class="cml" x="98" y="459" width="196" height="34" rx="4"/>
+  <text x="196" y="481" class="name mid">2 x demux2_cml</text>
+  <path class="wd" marker-end="url(#a)" d="M196,493 V505"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,476 H294"/>
+  <text x="324" y="480"><tspan class="ck">clk7</tspan><tspan class="note" dx="7">7 GHz CML</tspan></text>
+  <path class="lane ll" stroke-dasharray="23 1" d="M506,476 H602"/>
+  <text x="618" y="480" class="name">4 lanes x 7 Gb/s</text>
+
+  <!-- S2 -->
+  <rect class="tag" x="46" y="511" width="44" height="22" rx="11"/><text x="68" y="527" class="name mid">S2</text>
+  <rect class="cml" x="98" y="505" width="196" height="34" rx="4"/>
+  <text x="196" y="527" class="name mid">4 x demux2_cml</text>
+  <path class="wd" marker-end="url(#a)" d="M196,539 V551"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,522 H294"/>
+  <text x="324" y="526"><tspan class="ck">clk3p5</tspan><tspan class="note" dx="7">3.5 GHz CML</tspan></text>
+  <path class="lane ll" stroke-dasharray="11 1" d="M506,522 H602"/>
+  <text x="618" y="526" class="name">8 lanes x 3.5 Gb/s</text>
+
+  <!-- CML to CMOS -->
+    <rect x="98" y="551" width="196" height="34" rx="4" fill="url(#cml2cmos_down)" stroke="#57606a"/>
+  <text x="196" y="573" class="name mid">CML to CMOS</text>
+  <path class="wd" marker-end="url(#a)" d="M196,585 V597"/>
+  <text x="324" y="565" class="note">no clock; written inside</text>
+  <text x="324" y="580" class="note">rx_deser_path itself</text>
+  <path class="lane lc" stroke-dasharray="11 1" d="M506,568 H602"/>
+  <text x="618" y="572"><tspan class="name">8 lanes x 3.5 Gb/s</tspan><tspan class="note" dx="10">CML in, CMOS out</tspan></text>
+
+  <!-- S3 -->
+  <rect class="tag" x="46" y="603" width="44" height="22" rx="11"/><text x="68" y="619" class="name mid">S3</text>
+  <rect class="cmos" x="98" y="597" width="196" height="34" rx="4"/>
+  <text x="196" y="619" class="name mid">8 x demux2_cmos</text>
+  <path class="wd" marker-end="url(#a)" d="M196,631 V643"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,614 H294"/>
+  <text x="324" y="618"><tspan class="ck">clk1p75</tspan><tspan class="note" dx="7">1.75 GHz CMOS</tspan></text>
+  <path class="lane lc" stroke-dasharray="5 1" d="M506,614 H602"/>
+  <text x="618" y="618" class="name">16 lanes x 1.75 Gb/s</text>
+
+  <!-- S4 -->
+  <rect class="tag" x="46" y="649" width="44" height="22" rx="11"/><text x="68" y="665" class="name mid">S4</text>
+  <rect class="cmos" x="98" y="643" width="196" height="34" rx="4"/>
+  <text x="196" y="665" class="name mid">16 x demux2_cmos</text>
+  <path class="wd" marker-end="url(#a)" d="M196,677 V689"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,660 H294"/>
+  <text x="324" y="664"><tspan class="ck">clk0p875</tspan><tspan class="note" dx="7">0.875 GHz CMOS</tspan></text>
+  <path class="lane lc" stroke-dasharray="2 1" d="M506,660 H602"/>
+  <text x="618" y="664" class="name">32 lanes x 0.875 Gb/s</text>
+
+  <!-- output register -->
+  <rect class="tag" x="46" y="695" width="44" height="22" rx="11"/><text x="68" y="711" class="name mid">REG</text>
+  <rect class="cmos" x="98" y="689" width="196" height="34" rx="4"/>
+  <text x="196" y="711" class="name mid">output register</text>
+  <path class="wc" marker-end="url(#ac)" d="M312,706 H294"/>
+  <text x="324" y="703"><tspan class="ck">clk0p875</tspan><tspan class="note" dx="7">0.875 GHz CMOS</tspan></text>
+  <text x="324" y="718" class="note">rising edge (rx_wclk)</text>
+  <path class="lane lc" stroke-dasharray="2 1" d="M506,706 H602"/>
+  <text x="618" y="703" class="name">32 lanes x 0.875 Gb/s</text>
+  <text x="618" y="718" class="note">one 32-bit word per rx_wclk cycle</text>
+
+  <!-- ===== outputs ===== -->
+  <path class="wd" marker-end="url(#a)" d="M554,716 V756"/>
+  <text x="554" y="772" class="name mid">rxd_m[0:31]</text>
+  <rect class="box" x="98" y="751" width="196" height="44" rx="4"/>
+  <text x="196" y="770" class="name mid">the LSB path</text>
+  <text x="196" y="787" class="note mid">a second rx_deser_path</text>
+  <path class="wd" marker-end="url(#a)" d="M294,773 H372"/>
+  <text x="380" y="777" class="name">rxd_l[0:31]</text>
+  <text x="618" y="772" class="note">Two 32-bit words per rx_wclk cycle (0.875 GHz).</text>
+  <text x="618" y="788" class="note">Bit j is time slot j; slot 0 was received first.</text>
+
+  <!-- ===== legend ===== -->
+  <g transform="translate(24,816)">
+    <rect class="cmos" width="14" height="14" rx="2"/><text x="24" y="11">CMOS logic, 0 / 0.7 V</text>
+    <rect class="cml" x="187" width="14" height="14" rx="2"/><text x="211" y="11">CML, differential 0.6 Vpp</text>
+    <rect class="ana" x="403" width="14" height="14" rx="2"/><text x="427" y="11">analog</text>
+    <rect class="clk" x="482" width="14" height="14" rx="2"/><text x="506" y="11">clocking</text>
+    <rect class="ph" x="576" width="14" height="14" rx="2" fill="#ffffff"/><text x="600" y="11">placeholder, ideal</text>
+    <rect class="ext" x="742" width="14" height="14" rx="2"/><text x="766" y="11">off chip / ideal glue</text>
+    <path class="w" marker-end="url(#a)" d="M0,31 H26"/><text x="38" y="35">signal</text>
+    <path class="wc" marker-end="url(#ac)" d="M94,31 H120"/><text x="132" y="35">clock</text>
+    <path class="wb" marker-end="url(#ab)" d="M180,31 H206"/><text x="218" y="35">bias current</text>
+    <rect class="mix" x="316" y="24" width="14" height="14" rx="2"/><text x="340" y="35">CMOS on one side, CML on the other</text>
+  </g>
+</svg>

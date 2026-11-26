@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 716" width="1000" height="716" role="img" aria-labelledby="t d"
+     font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace" font-size="12">
+  <title id="t">PAM4 SerDes: the whole link</title>
+  <desc id="d">Top level pam4_serdes. Transmit side: reference clock, refclk_buf, tx_pll (437.5 MHz x 32 = 14 GHz), then tx_top with its clock generator, PRBS source, two serializer paths, six pre-drivers, the PAM4 driver and tx_bias. The 28 GBd PAM4 output leaves on txp / txn, crosses a channel that is not on the chip, and comes back on rx_p / rx_n. Receive side: rx_top with the analog front end, the decision block, two retimers and two deserializer paths giving two 32-bit words, clocked by rx_cdr through rx_clkgen.</desc>
+
+  <!-- Source of analog/PAM4SerDes/docs/img/top.svg: plain boxes, straight connectors, text.
+       Edit this file, then run  python3 docs/diagrams/sketch.py  to redraw the hand-drawn version.
+       The colours and fonts below are only for looking at this file directly; sketch.py brings
+       its own. The five sources share the style block, the markers and the legend. -->
+  <style>
+    text   { fill: #1f2328; }
+    .title { font-size: 18px; font-weight: 700; }
+    .name  { font-size: 13px; font-weight: 700; }
+    .note  { fill: #57606a; }
+    .cmos  { fill: #dbeafe; stroke: #1d4ed8; }  /* CMOS logic, single-ended 0 / 0.7 V */
+    .cml   { fill: #ffedd5; stroke: #c2410c; }  /* CML, differential */
+    .ana   { fill: #dcfce7; stroke: #15803d; }  /* analog */
+    .clk   { fill: #f3e8ff; stroke: #7e22ce; }  /* clock generation */
+    .mix   { fill: url(#cmos2cml); stroke: #57606a; }  /* CMOS on one side, CML on the other */
+    .ext   { fill: #eaeef2; stroke: #6e7781; }  /* not on the chip, or ideal glue */
+    .ph    { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 6 3; }  /* placeholder cell */
+    .box   { fill: #ffffff; stroke: #8c959f; }  /* container: a structural block */
+    .w     { fill: none; stroke: #1f2328; stroke-width: 1.5; }  /* signal */
+    .wd    { fill: none; stroke: #1f2328; stroke-width: 2.5; }  /* main data path */
+    .wc    { fill: none; stroke: #7e22ce; stroke-width: 1.5; }  /* clock */
+    .wb    { fill: none; stroke: #15803d; stroke-width: 1.5; stroke-dasharray: 5 3; }  /* bias current */
+    .mid   { text-anchor: middle; }
+    .end   { text-anchor: end; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#1f2328"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7e22ce"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#15803d"/></marker>
+    <linearGradient id="cmos2cml"><stop offset="0.5" stop-color="#dbeafe"/><stop offset="0.5" stop-color="#ffedd5"/></linearGradient>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="999" height="715" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="24" y="34" class="title">PAM4 SerDes: the whole link</text>
+  <text x="24" y="54" class="note">56 Gb/s = 28 GBd x 2 bits per symbol. Every block is a behavioural model; a testbench supplies the channel.</text>
+
+  <!-- ===== the chip ===== -->
+  <rect x="150" y="70" width="660" height="576" rx="6" fill="#f6f8fa" stroke="#57606a" stroke-width="1.5"/>
+  <text x="796" y="90" class="end"><tspan class="name">pam4_serdes</tspan> top level, wiring only</text>
+
+  <!-- transmit clock: reference -> refclk_buf -> tx_pll -> ck -->
+  <text x="132" y="128" class="end">refclk_tx_p/n</text>
+  <path class="wc" marker-end="url(#ac)" d="M138,124 H176"/>
+  <rect class="clk" x="176" y="102" width="110" height="44" rx="4"/>
+  <text x="231" y="121" class="name mid">refclk_buf</text>
+  <text x="231" y="138" class="note mid">437.5 MHz</text>
+  <path class="wc" marker-end="url(#ac)" d="M286,124 H326"/>
+  <rect class="clk" x="326" y="102" width="196" height="44" rx="4"/>
+  <text x="424" y="121" class="name mid">tx_pll</text>
+  <text x="424" y="138" class="note mid">x 32 → 14 GHz</text>
+  <path class="w" marker-end="url(#a)" d="M350,102 V86 H140"/>
+  <text x="132" y="90" class="end">tx_lock</text>
+  <path class="wc" marker-end="url(#ac)" d="M380,146 V200"/>
+  <text x="390" y="163">ck: 14 GHz, CMOS level</text>
+
+  <!-- tx_top -->
+  <rect class="box" x="164" y="172" width="632" height="150" rx="6"/>
+  <text x="176" y="191"><tspan class="name">tx_top</tspan> transmitter</text>
+
+  <rect class="clk" x="176" y="200" width="250" height="44" rx="4"/>
+  <text x="301" y="219" class="name mid">tx_clkgen</text>
+  <text x="301" y="236" class="note mid">14, 7 GHz CML; 3.5 to 0.875 CMOS</text>
+  <path class="wc" marker-end="url(#ac)" d="M235,244 V266"/>
+  <text x="243" y="259">clk0p875</text>
+  <path class="wc" marker-end="url(#ac)" d="M397,244 V266"/>
+  <text x="405" y="259">all 5 clocks</text>
+
+  <rect class="ana" x="568" y="200" width="216" height="44" rx="4"/>
+  <text x="676" y="219" class="name mid">tx_bias</text>
+  <text x="676" y="236" class="note mid">6 tail currents, 16 mA total</text>
+  <path class="wb" marker-end="url(#ab)" d="M728,244 V266"/>
+  <path class="w" marker-end="url(#a)" d="M826,208 H784"/>
+  <text x="832" y="212">vref<tspan class="note" dx="8">0.6 V</tspan></text>
+  <path class="w" marker-end="url(#a)" d="M826,222 H784"/>
+  <text x="832" y="226">tx_en</text>
+  <path class="w" marker-end="url(#a)" d="M784,236 H826"/>
+  <text x="832" y="240">tx_pgood</text>
+
+  <rect class="cmos" x="176" y="266" width="118" height="44" rx="4"/>
+  <text x="235" y="285" class="name mid">prbs_gray_src</text>
+  <text x="235" y="302" class="note mid">64 b per word</text>
+  <path class="wd" marker-end="url(#a)" d="M294,288 H317"/>
+  <rect class="mix" x="317" y="266" width="160" height="44" rx="4"/>
+  <text x="397" y="285" class="name mid">tx_ser_ffe_path x2</text>
+  <text x="397" y="302" class="note mid">32 x 0.875 → 28 Gb/s</text>
+  <path class="wd" marker-end="url(#a)" d="M477,288 H499"/>
+  <rect class="cml" x="499" y="266" width="150" height="44" rx="4"/>
+  <text x="574" y="285" class="name mid">predriver_cml x6</text>
+  <text x="574" y="302" class="note mid">one per path and tap</text>
+  <path class="wd" marker-end="url(#a)" d="M649,288 H672"/>
+  <rect class="ana" x="672" y="266" width="112" height="44" rx="4"/>
+  <text x="728" y="285" class="name mid">pam4_driver</text>
+  <text x="728" y="302" class="note mid">6 taps → PAM4</text>
+
+  <!-- the pads and the channel -->
+  <path class="wd" marker-end="url(#a)" d="M784,288 H930 V318"/>
+  <text x="818" y="281">txp / txn</text>
+  <text x="818" y="304">28 GBd, 56 Gb/s</text>
+  <rect class="ext" x="868" y="318" width="124" height="60" rx="4"/>
+  <text x="930" y="337" class="name mid">channel</text>
+  <text x="930" y="353" class="note mid">not on the chip:</text>
+  <text x="930" y="369" class="note mid">from a testbench</text>
+  <path class="wd" marker-end="url(#a)" d="M930,378 V408 H784"/>
+  <text x="818" y="401">rx_p / rx_n</text>
+
+  <!-- reset -->
+  <text x="132" y="344" class="end">rst</text>
+  <path class="w" d="M138,340 H190"/>
+  <path class="w" marker-end="url(#a)" d="M190,340 V322"/>
+  <path class="w" marker-end="url(#a)" d="M190,340 V358"/>
+  <text x="202" y="344" class="note">active-high reset, to both halves</text>
+
+  <!-- rx_top: data runs right to left -->
+  <rect class="box" x="164" y="358" width="632" height="150" rx="6"/>
+  <text x="176" y="377"><tspan class="name">rx_top</tspan> receiver</text>
+
+  <rect class="ana" x="664" y="386" width="120" height="44" rx="4"/>
+  <text x="724" y="405" class="name mid">rx_afe</text>
+  <text x="724" y="422" class="note mid">term, CTLE, VGA</text>
+  <path class="wd" marker-end="url(#a)" d="M664,408 H640"/>
+  <rect class="cml" x="514" y="386" width="126" height="44" rx="4"/>
+  <text x="577" y="405" class="name mid">rx_decision</text>
+  <text x="577" y="422" class="note mid">24 slicers, DFE</text>
+  <path class="wd" marker-end="url(#a)" d="M514,408 H491"/>
+  <rect class="cml" x="355" y="386" width="136" height="44" rx="4"/>
+  <text x="423" y="405" class="name mid">rx_dec_retime</text>
+  <text x="423" y="422" class="note mid">x2, one per phase</text>
+  <path class="wd" marker-end="url(#a)" d="M355,408 H332"/>
+  <rect class="mix" x="176" y="386" width="156" height="44" rx="4"/>
+  <text x="254" y="405" class="name mid">rx_deser_path x2</text>
+  <text x="254" y="422" class="note mid">2 x 14 → 32 x 0.875</text>
+
+  <path class="wd" marker-end="url(#a)" d="M176,400 H140"/>
+  <text x="132" y="404" class="end">rxd_m[0:31]</text>
+  <path class="wd" marker-end="url(#a)" d="M176,416 H140"/>
+  <text x="132" y="420" class="end">rxd_l[0:31]</text>
+  <text x="132" y="436" class="note end">2 x 32 bits</text>
+
+  <path class="w" marker-end="url(#a)" d="M826,444 H744 V430"/>
+  <text x="832" y="448">vtt<tspan class="note" dx="8">termination ref.</tspan></text>
+  <path class="w" marker-end="url(#a)" d="M826,458 H724 V430"/>
+  <text x="832" y="462">vctrl<tspan class="note" dx="8">VGA gain</tspan></text>
+
+  <rect class="clk" x="176" y="452" width="280" height="44" rx="4"/>
+  <text x="316" y="471" class="name mid">rx_clkgen</text>
+  <text x="316" y="488" class="note mid">14, 7, 3.5 GHz CML; 1.75, 0.875 CMOS</text>
+  <path class="wc" marker-end="url(#ac)" d="M254,452 V430"/>
+  <path class="wc" marker-end="url(#ac)" d="M423,452 V430"/>
+  <path class="wc" marker-end="url(#ac)" d="M456,466 H577 V430"/>
+  <text x="466" y="460">clk14, CML</text>
+  <path class="wc" marker-end="url(#ac)" d="M176,474 H140"/>
+  <text x="132" y="478" class="end">rx_wclk</text>
+  <text x="132" y="492" class="note end">0.875 GHz</text>
+
+  <!-- receive clock: reference -> refclk_buf -> rx_cdr, which also watches the data -->
+  <path class="w" marker-end="url(#a)" d="M676,430 V526"/>
+  <text x="684" y="482">afe_p / afe_n</text>
+  <circle cx="577" cy="466" r="3" fill="#7e22ce"/>
+  <path class="wc" marker-end="url(#ac)" d="M577,466 V526"/>
+
+  <text x="132" y="552" class="end">refclk_rx_p/n</text>
+  <path class="wc" marker-end="url(#ac)" d="M138,548 H176"/>
+  <rect class="clk" x="176" y="526" width="110" height="44" rx="4"/>
+  <text x="231" y="545" class="name mid">refclk_buf</text>
+  <text x="231" y="562" class="note mid">437.5 MHz</text>
+  <path class="wc" marker-end="url(#ac)" d="M286,548 H430"/>
+  <rect class="clk" x="430" y="526" width="270" height="44" rx="4"/>
+  <text x="565" y="545" class="name mid">rx_cdr</text>
+  <text x="565" y="562" class="note mid">frequency lock, then tracks the data</text>
+  <path class="wc" marker-end="url(#ac)" d="M445,526 V496"/>
+  <text x="437" y="521" class="end">ck: 14 GHz, CMOS level</text>
+  <path class="w" marker-end="url(#a)" d="M138,590 H470 V570"/>
+  <text x="132" y="594" class="end">force_lock</text>
+  <path class="w" marker-end="url(#a)" d="M500,570 V606 H140"/>
+  <text x="132" y="610" class="end">rx_lock</text>
+
+  <text x="176" y="632"><tspan class="name">supplies</tspan><tspan dx="14">vdd</tspan><tspan class="note" dx="7">0.7 V core</tspan><tspan dx="20">vddo</tspan><tspan class="note" dx="7">1.25 V transmitter output stage</tspan><tspan dx="20">vss</tspan></text>
+
+  <!-- ===== legend ===== -->
+  <g transform="translate(24,666)">
+    <rect class="cmos" width="14" height="14" rx="2"/><text x="24" y="11">CMOS logic, 0 / 0.7 V</text>
+    <rect class="cml" x="187" width="14" height="14" rx="2"/><text x="211" y="11">CML, differential 0.6 Vpp</text>
+    <rect class="ana" x="403" width="14" height="14" rx="2"/><text x="427" y="11">analog</text>
+    <rect class="clk" x="482" width="14" height="14" rx="2"/><text x="506" y="11">clocking</text>
+    <rect class="ph" x="576" width="14" height="14" rx="2" fill="#ffffff"/><text x="600" y="11">placeholder, ideal</text>
+    <rect class="ext" x="742" width="14" height="14" rx="2"/><text x="766" y="11">off chip / ideal glue</text>
+    <path class="w" marker-end="url(#a)" d="M0,31 H26"/><text x="38" y="35">signal</text>
+    <path class="wc" marker-end="url(#ac)" d="M94,31 H120"/><text x="132" y="35">clock</text>
+    <path class="wb" marker-end="url(#ab)" d="M180,31 H206"/><text x="218" y="35">bias current</text>
+    <rect class="mix" x="316" y="24" width="14" height="14" rx="2"/><text x="340" y="35">CMOS on one side, CML on the other</text>
+  </g>
+</svg>

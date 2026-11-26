@@ -1,0 +1,297 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 986" width="1000" height="986" role="img" aria-labelledby="t d"
+     font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace" font-size="12">
+  <title id="t">Clocking: two loops and two clock trees</title>
+  <desc id="d">Transmit side: refclk_buf feeds tx_pll, a loop of pfd, charge_pump (100 uA), loop_filter_rc (25.31 kilohm, 1.427 pF, plus C2 0.14 pF), vco and div_n (divide by 32), with lock_detect. Its 14 GHz output goes to tx_clkgen: dcc_cml, clkbuf_cml (clk14, CML), div2_cml (clk7, CML, an ideal placeholder), cml2cmos, phase_aligner (aligns to the retimed 7 Gb/s data), then three div2_tspc giving clk3p5, clk1p75 and clk0p875 (CMOS). Receive side: rx_cdr has one loop filter (2.352 kilohm, 20 pF, plus C2 1 pF) and one vco, and two detectors. First pfd and a 400 uA charge_pump lock the frequency to the reference; lock_detect or force_lock then turns that pump off, and cdr_pd_linear tracks the data from the analog front end against clk14. Its 14 GHz output goes to rx_clkgen: dcc_cml, clkbuf_cml (clk14, CML), two div2_cml placeholders (clk7 and clk3p5, CML), cml2cmos, then two div2_tspc giving clk1p75 and clk0p875 (CMOS).</desc>
+
+  <!-- Source of analog/PAM4SerDes/docs/img/clocking.svg: plain boxes, straight connectors, text.
+       Edit this file, then run  python3 docs/diagrams/sketch.py  to redraw the hand-drawn version.
+       The colours and fonts below are only for looking at this file directly; sketch.py brings
+       its own. The five sources share the style block, the markers and the legend.
+
+       Here a block's colour is the kind of signal it puts out, and a clock's label box has
+       the colour of its levels: amber = CML, blue = CMOS. -->
+  <style>
+    text   { fill: #1f2328; }
+    .title { font-size: 18px; font-weight: 700; }
+    .name  { font-size: 13px; font-weight: 700; }
+    .note  { fill: #57606a; }
+    .cmos  { fill: #dbeafe; stroke: #1d4ed8; }  /* CMOS logic, single-ended 0 / 0.7 V */
+    .cml   { fill: #ffedd5; stroke: #c2410c; }  /* CML, differential */
+    .ana   { fill: #dcfce7; stroke: #15803d; }  /* analog */
+    .clk   { fill: #f3e8ff; stroke: #7e22ce; }  /* clock generation */
+    .mix   { fill: url(#cmos2cml); stroke: #57606a; }  /* CMOS on one side, CML on the other */
+    .mixr  { fill: url(#cml2cmos); stroke: #57606a; }
+    .ext   { fill: #eaeef2; stroke: #6e7781; }  /* not on the chip, or ideal glue */
+    .ph    { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 6 3; }  /* placeholder cell */
+    .box   { fill: #ffffff; stroke: #8c959f; }  /* container: a structural block */
+    .w     { fill: none; stroke: #1f2328; stroke-width: 1.5; }  /* signal */
+    .wd    { fill: none; stroke: #1f2328; stroke-width: 2.5; }  /* main data path */
+    .wc    { fill: none; stroke: #7e22ce; stroke-width: 1.5; }  /* clock */
+    .wb    { fill: none; stroke: #15803d; stroke-width: 1.5; stroke-dasharray: 5 3; }  /* bias current */
+    .mid   { text-anchor: middle; }
+    .end   { text-anchor: end; }
+    .warn  { fill: #b91c1c; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#1f2328"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7e22ce"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#15803d"/></marker>
+    <linearGradient id="cmos2cml"><stop offset="0.5" stop-color="#dbeafe"/><stop offset="0.5" stop-color="#ffedd5"/></linearGradient>
+    <linearGradient id="cml2cmos"><stop offset="0.5" stop-color="#ffedd5"/><stop offset="0.5" stop-color="#dbeafe"/></linearGradient>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="999" height="985" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="24" y="34" class="title">Clocking: two loops and two clock trees</text>
+  <text x="24" y="54" class="note">Each loop makes a 14 GHz clock from a 437.5 MHz reference. Each tree divides it down for the serializer or the deserializer.</text>
+
+  <!-- ===== 1. tx_pll ===== -->
+  <rect class="box" x="140" y="70" width="836" height="172" rx="6"/>
+  <text x="152" y="89"><tspan class="name">tx_pll</tspan> 437.5 MHz x 32 = 14 GHz. Type-II charge-pump loop, 21.875 MHz bandwidth.</text>
+
+  <text x="72" y="96" class="mid">refclk_tx_p/n</text>
+  <rect class="cmos" x="24" y="102" width="96" height="44" rx="4"/>
+  <text x="72" y="121" class="name mid">refclk_buf</text>
+  <text x="72" y="138" class="note mid">437.5 MHz</text>
+  <path class="wc" marker-end="url(#ac)" d="M120,124 H176"/>
+
+  <rect class="cmos" x="176" y="102" width="134" height="44" rx="4"/>
+  <text x="243" y="121" class="name mid">pfd</text>
+  <text x="243" y="138" class="note mid">ref vs fb → up, dn</text>
+  <path class="w" marker-end="url(#a)" d="M310,124 H344"/>
+  <rect class="ana" x="344" y="102" width="116" height="44" rx="4"/>
+  <text x="402" y="121" class="name mid">charge_pump</text>
+  <text x="402" y="138" class="note mid">100 µA, ideal</text>
+  <path class="w" marker-end="url(#a)" d="M460,124 H684"/>
+  <text x="470" y="118">vctl</text>
+  <rect class="ana" x="684" y="102" width="136" height="44" rx="4"/>
+  <text x="752" y="121" class="name mid">vco</text>
+  <text x="752" y="138" class="note mid">14 GHz, CMOS out</text>
+  <text x="824" y="118">ck</text>
+
+  <circle cx="575" cy="124" r="3" fill="#1f2328"/>
+  <path class="w" d="M575,124 V166"/>
+  <rect class="ana" x="495" y="166" width="160" height="44" rx="4"/>
+  <text x="575" y="185" class="name mid">loop_filter_rc</text>
+  <text x="575" y="202" class="note mid">25.31 kΩ + 1.427 pF</text>
+  <text x="664" y="192" class="note">+ C2 0.14 pF</text>
+
+  <circle cx="880" cy="124" r="3" fill="#7e22ce"/>
+  <path class="wc" marker-end="url(#ac)" d="M880,124 V166"/>
+  <rect class="cmos" x="824" y="166" width="112" height="44" rx="4"/>
+  <text x="880" y="185" class="name mid">div_n</text>
+  <text x="880" y="202" class="note mid">÷ 32</text>
+  <path class="wc" marker-end="url(#ac)" d="M880,210 V228 H296 V146"/>
+  <text x="735" y="223" class="mid">ckfb = ck / 32</text>
+
+  <rect class="cmos" x="176" y="166" width="106" height="44" rx="4"/>
+  <text x="229" y="185" class="name mid">lock_detect</text>
+  <text x="229" y="202" class="note mid">ckref vs ckfb</text>
+  <path class="w" marker-end="url(#a)" d="M176,188 H100"/>
+  <text x="94" y="192" class="end">tx_lock</text>
+
+  <!-- ck goes down to the transmitter's tree -->
+  <text x="96" y="277">ck: 14 GHz, single-ended CMOS (0 to 0.7 V)</text>
+
+  <!-- ===== 2. tx_clkgen ===== -->
+  <rect class="box" x="24" y="284" width="952" height="170" rx="6"/>
+  <text x="96" y="303"><tspan class="name">tx_clkgen</tspan> the transmitter's clock tree</text>
+  <path class="wc" marker-end="url(#ac)" d="M820,124 H956 V260 H78 V312"/>
+
+  <rect class="mix" x="36" y="312" width="84" height="44" rx="4"/>
+  <text x="78" y="331" class="name mid">dcc_cml</text>
+  <text x="78" y="348" class="note mid">duty cycle</text>
+  <path class="wc" marker-end="url(#ac)" d="M120,334 H144"/>
+  <rect class="cml" x="144" y="312" width="100" height="44" rx="4"/>
+  <text x="194" y="331" class="name mid">clkbuf_cml</text>
+  <text x="194" y="348" class="note mid">buffer</text>
+  <path class="wc" marker-end="url(#ac)" d="M244,334 H268"/>
+  <rect class="cml ph" x="268" y="312" width="90" height="44" rx="4"/>
+  <text x="313" y="331" class="name mid">div2_cml</text>
+  <text x="313" y="348" class="warn mid">placeholder</text>
+  <path class="wc" marker-end="url(#ac)" d="M358,334 H382"/>
+  <rect class="mixr" x="382" y="312" width="90" height="44" rx="4"/>
+  <text x="427" y="331" class="name mid">cml2cmos</text>
+  <text x="427" y="348" class="note mid">to CMOS</text>
+  <path class="wc" marker-end="url(#ac)" d="M472,334 H496"/>
+  <rect class="cmos" x="496" y="312" width="124" height="44" rx="4"/>
+  <text x="558" y="331" class="name mid">phase_aligner</text>
+  <text x="558" y="348" class="note mid">aligns to data</text>
+  <path class="wc" marker-end="url(#ac)" d="M620,334 H644"/>
+  <rect class="cmos" x="644" y="312" width="86" height="44" rx="4"/>
+  <text x="687" y="331" class="name mid">div2_tspc</text>
+  <text x="687" y="348" class="note mid">÷ 2</text>
+  <path class="wc" marker-end="url(#ac)" d="M730,334 H754"/>
+  <rect class="cmos" x="754" y="312" width="86" height="44" rx="4"/>
+  <text x="797" y="331" class="name mid">div2_tspc</text>
+  <text x="797" y="348" class="note mid">÷ 2</text>
+  <path class="wc" marker-end="url(#ac)" d="M840,334 H864"/>
+  <rect class="cmos" x="864" y="312" width="86" height="44" rx="4"/>
+  <text x="907" y="331" class="name mid">div2_tspc</text>
+  <text x="907" y="348" class="note mid">÷ 2</text>
+
+  <!-- the five clocks it gives, and what they drive (level and stage names as in transmitter.svg / receiver.svg) -->
+  <path class="wc" marker-end="url(#ac)" d="M194,356 V378"/>
+  <rect class="cml" x="144" y="378" width="100" height="52" rx="6"/>
+  <text x="194" y="394" class="name mid">clk14</text><text x="194" y="409" class="note mid">14 GHz</text><text x="194" y="423" class="note mid">CML</text>
+  <text x="194" y="446" class="mid">TG, FIN</text>
+  <path class="wc" marker-end="url(#ac)" d="M313,356 V378"/>
+  <rect class="cml" x="263" y="378" width="100" height="52" rx="6"/>
+  <text x="313" y="394" class="name mid">clk7</text><text x="313" y="409" class="note mid">7 GHz</text><text x="313" y="423" class="note mid">CML</text>
+  <text x="313" y="446" class="mid">R, L4</text>
+  <path class="wc" marker-end="url(#ac)" d="M687,356 V378"/>
+  <rect class="cmos" x="635" y="378" width="104" height="52" rx="6"/>
+  <text x="687" y="394" class="name mid">clk3p5</text><text x="687" y="409" class="note mid">3.5 GHz</text><text x="687" y="423" class="note mid">CMOS</text>
+  <text x="687" y="446" class="mid">R, L3</text>
+  <path class="wc" marker-end="url(#ac)" d="M797,356 V378"/>
+  <rect class="cmos" x="745" y="378" width="104" height="52" rx="6"/>
+  <text x="797" y="394" class="name mid">clk1p75</text><text x="797" y="409" class="note mid">1.75 GHz</text><text x="797" y="423" class="note mid">CMOS</text>
+  <text x="797" y="446" class="mid">L2</text>
+  <path class="wc" marker-end="url(#ac)" d="M907,356 V378"/>
+  <rect class="cmos" x="855" y="378" width="104" height="52" rx="6"/>
+  <text x="907" y="394" class="name mid">clk0p875</text><text x="907" y="409" class="note mid">0.875 GHz</text><text x="907" y="423" class="note mid">CMOS</text>
+  <text x="907" y="446" class="mid">PRBS, L0, L1</text>
+  <text x="36" y="446" class="note">drives:</text>
+
+  <path class="w" marker-end="url(#a)" d="M558,394 V356"/>
+  <text x="558" y="414" class="mid">retimed 7 Gb/s data</text>
+  <text x="558" y="429" class="note mid">from the serializer</text>
+
+  <!-- ===== 3. rx_cdr ===== -->
+  <rect class="box" x="140" y="470" width="836" height="226" rx="6"/>
+  <text x="152" y="489"><tspan class="name">rx_cdr</tspan> one loop filter and one VCO, two detectors: frequency lock first, then the data.</text>
+
+  <!-- detector 2: the phase detector, on the data -->
+  <text x="24" y="520">afe_p / afe_n</text>
+  <path class="w" marker-end="url(#a)" d="M122,516 H176"/>
+  <text x="24" y="538">clk14</text>
+  <path class="wc" marker-end="url(#ac)" d="M66,534 H176"/>
+  <rect class="ext" x="176" y="502" width="124" height="44" rx="4"/>
+  <text x="238" y="521" class="mid">diff2se, qdelay</text>
+  <text x="238" y="537" class="note mid">ideal glue</text>
+  <path class="w" marker-end="url(#a)" d="M300,524 H324"/>
+  <rect class="ana" x="324" y="502" width="136" height="44" rx="4"/>
+  <text x="392" y="521" class="name mid">cdr_pd_linear</text>
+  <text x="392" y="538" class="note mid">linear phase det.</text>
+  <path class="w" d="M460,524 H540 V582"/>
+  <text x="464" y="518">2. tracking</text>
+
+  <!-- the shared part: vctl, loop filter, vco, divider -->
+  <circle cx="540" cy="582" r="3.5" fill="#1f2328"/>
+  <path class="w" marker-end="url(#a)" d="M540,582 H684"/>
+  <text x="552" y="576">vctl</text>
+  <rect class="ana" x="684" y="560" width="136" height="44" rx="4"/>
+  <text x="752" y="579" class="name mid">vco</text>
+  <text x="752" y="596" class="note mid">14 GHz, CMOS out</text>
+  <text x="824" y="576">ck</text>
+  <circle cx="628" cy="582" r="3" fill="#1f2328"/>
+  <path class="w" d="M628,582 V618"/>
+  <rect class="ana" x="548" y="618" width="160" height="44" rx="4"/>
+  <text x="628" y="637" class="name mid">loop_filter_rc</text>
+  <text x="628" y="654" class="note mid">2.352 kΩ + 20 pF</text>
+  <text x="717" y="644" class="note">+ C2 1 pF</text>
+  <circle cx="880" cy="582" r="3" fill="#7e22ce"/>
+  <path class="wc" marker-end="url(#ac)" d="M880,582 V618"/>
+  <rect class="cmos" x="824" y="618" width="112" height="44" rx="4"/>
+  <text x="880" y="637" class="name mid">div_n</text>
+  <text x="880" y="654" class="note mid">÷ 32</text>
+  <path class="wc" marker-end="url(#ac)" d="M880,662 V680 H296 V662"/>
+  <text x="735" y="675" class="mid">ckfb = ck / 32</text>
+
+  <!-- detector 1: the frequency loop, on the reference -->
+  <text x="72" y="612" class="mid">refclk_rx_p/n</text>
+  <rect class="cmos" x="24" y="618" width="96" height="44" rx="4"/>
+  <text x="72" y="637" class="name mid">refclk_buf</text>
+  <text x="72" y="654" class="note mid">437.5 MHz</text>
+  <path class="wc" marker-end="url(#ac)" d="M120,640 H176"/>
+  <rect class="cmos" x="176" y="618" width="134" height="44" rx="4"/>
+  <text x="243" y="637" class="name mid">pfd</text>
+  <text x="243" y="654" class="note mid">ref vs fb → up, dn</text>
+  <path class="w" marker-end="url(#a)" d="M310,640 H344"/>
+  <rect class="ana" x="344" y="618" width="116" height="44" rx="4"/>
+  <text x="402" y="637" class="name mid">charge_pump</text>
+  <text x="402" y="654" class="note mid">400 µA, ideal</text>
+  <path class="w" d="M460,640 H540 V582"/>
+  <text x="464" y="634">1. FLL</text>
+
+  <rect class="cmos" x="176" y="560" width="106" height="44" rx="4"/>
+  <text x="229" y="579" class="name mid">lock_detect</text>
+  <text x="229" y="596" class="note mid">ckref vs ckfb</text>
+  <path class="w" marker-end="url(#a)" d="M176,582 H100"/>
+  <text x="94" y="586" class="end">rx_lock</text>
+  <path class="w" marker-end="url(#a)" d="M282,582 H402 V618"/>
+  <text x="290" y="576">lock or force_lock: pump off</text>
+
+  <!-- ck goes down to the receiver's tree -->
+  <text x="96" y="729">ck: 14 GHz, single-ended CMOS (0 to 0.7 V)</text>
+
+  <!-- ===== 4. rx_clkgen ===== -->
+  <rect class="box" x="24" y="740" width="952" height="176" rx="6"/>
+  <text x="96" y="759"><tspan class="name">rx_clkgen</tspan> the receiver's clock tree</text>
+  <path class="wc" marker-end="url(#ac)" d="M820,582 H956 V712 H78 V770"/>
+
+  <rect class="mix" x="36" y="770" width="84" height="44" rx="4"/>
+  <text x="78" y="789" class="name mid">dcc_cml</text>
+  <text x="78" y="806" class="note mid">duty cycle</text>
+  <path class="wc" marker-end="url(#ac)" d="M120,792 H148"/>
+  <rect class="cml" x="148" y="770" width="100" height="44" rx="4"/>
+  <text x="198" y="789" class="name mid">clkbuf_cml</text>
+  <text x="198" y="806" class="note mid">buffer</text>
+  <path class="wc" marker-end="url(#ac)" d="M248,792 H276"/>
+  <rect class="cml ph" x="276" y="770" width="90" height="44" rx="4"/>
+  <text x="321" y="789" class="name mid">div2_cml</text>
+  <text x="321" y="806" class="warn mid">placeholder</text>
+  <path class="wc" marker-end="url(#ac)" d="M366,792 H394"/>
+  <rect class="cml ph" x="394" y="770" width="90" height="44" rx="4"/>
+  <text x="439" y="789" class="name mid">div2_cml</text>
+  <text x="439" y="806" class="warn mid">placeholder</text>
+  <path class="wc" marker-end="url(#ac)" d="M484,792 H512"/>
+  <rect class="mixr" x="512" y="770" width="90" height="44" rx="4"/>
+  <text x="557" y="789" class="name mid">cml2cmos</text>
+  <text x="557" y="806" class="note mid">to CMOS</text>
+  <path class="wc" marker-end="url(#ac)" d="M602,792 H630"/>
+  <rect class="cmos" x="630" y="770" width="86" height="44" rx="4"/>
+  <text x="673" y="789" class="name mid">div2_tspc</text>
+  <text x="673" y="806" class="note mid">÷ 2</text>
+  <path class="wc" marker-end="url(#ac)" d="M716,792 H744"/>
+  <rect class="cmos" x="744" y="770" width="86" height="44" rx="4"/>
+  <text x="787" y="789" class="name mid">div2_tspc</text>
+  <text x="787" y="806" class="note mid">÷ 2</text>
+
+  <!-- the five clocks it gives, and what they drive (level and stage names as in transmitter.svg / receiver.svg) -->
+  <path class="wc" marker-end="url(#ac)" d="M198,814 V836"/>
+  <rect class="cml" x="148" y="836" width="100" height="52" rx="6"/>
+  <text x="198" y="852" class="name mid">clk14</text><text x="198" y="867" class="note mid">14 GHz</text><text x="198" y="881" class="note mid">CML</text>
+  <path class="wc" marker-end="url(#ac)" d="M321,814 V836"/>
+  <rect class="cml" x="271" y="836" width="100" height="52" rx="6"/>
+  <text x="321" y="852" class="name mid">clk7</text><text x="321" y="867" class="note mid">7 GHz</text><text x="321" y="881" class="note mid">CML</text>
+  <text x="321" y="904" class="mid">S1</text>
+  <path class="wc" marker-end="url(#ac)" d="M439,814 V836"/>
+  <rect class="cml" x="389" y="836" width="100" height="52" rx="6"/>
+  <text x="439" y="852" class="name mid">clk3p5</text><text x="439" y="867" class="note mid">3.5 GHz</text><text x="439" y="881" class="note mid">CML</text>
+  <text x="439" y="904" class="mid">S2</text>
+  <path class="wc" marker-end="url(#ac)" d="M673,814 V836"/>
+  <rect class="cmos" x="621" y="836" width="104" height="52" rx="6"/>
+  <text x="673" y="852" class="name mid">clk1p75</text><text x="673" y="867" class="note mid">1.75 GHz</text><text x="673" y="881" class="note mid">CMOS</text>
+  <text x="673" y="904" class="mid">S3</text>
+  <path class="wc" marker-end="url(#ac)" d="M787,814 V836"/>
+  <rect class="cmos" x="735" y="836" width="104" height="52" rx="6"/>
+  <text x="787" y="852" class="name mid">clk0p875</text><text x="787" y="867" class="note mid">0.875 GHz</text><text x="787" y="881" class="note mid">CMOS</text>
+  <text x="787" y="904" class="mid">S4, REG</text>
+  <text x="36" y="904"><tspan class="note">drives:</tspan><tspan dx="7">slicers, DFE, retimers, CDR</tspan></text>
+  <text x="856" y="857" class="note">clk0p875 is also</text>
+  <text x="856" y="873" class="note">the pin rx_wclk</text>
+
+  <!-- ===== legend ===== -->
+  <g transform="translate(24,936)">
+    <rect class="cmos" width="14" height="14" rx="2"/><text x="24" y="11">CMOS logic, 0 / 0.7 V</text>
+    <rect class="cml" x="187" width="14" height="14" rx="2"/><text x="211" y="11">CML, differential 0.6 Vpp</text>
+    <rect class="ana" x="403" width="14" height="14" rx="2"/><text x="427" y="11">analog</text>
+    <rect class="clk" x="482" width="14" height="14" rx="2"/><text x="506" y="11">clocking</text>
+    <rect class="ph" x="576" width="14" height="14" rx="2" fill="#ffffff"/><text x="600" y="11">placeholder, ideal</text>
+    <rect class="ext" x="742" width="14" height="14" rx="2"/><text x="766" y="11">off chip / ideal glue</text>
+    <path class="w" marker-end="url(#a)" d="M0,31 H26"/><text x="38" y="35">signal</text>
+    <path class="wc" marker-end="url(#ac)" d="M94,31 H120"/><text x="132" y="35">clock</text>
+    <path class="wb" marker-end="url(#ab)" d="M180,31 H206"/><text x="218" y="35">bias current</text>
+    <rect class="mix" x="316" y="24" width="14" height="14" rx="2"/><text x="340" y="35">CMOS on one side, CML on the other</text>
+  </g>
+</svg>

@@ -1,55 +1,72 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { MarkdownRenderer } from './components/MarkdownRenderer'
-import { loadContent, Section, Page } from './utils/contentLoader'
+import { sections } from './utils/contentLoader'
+
+// The current page lives in the URL hash, `#/<Section>/<Page>` with an optional
+// `#heading` after it, so a page can be linked, reloaded and reached with back/forward
+// on GitHub Pages without any server configuration. Every link is a plain <a href="#/...">.
+const pages = sections.flatMap(section => section.pages)
+
+const subscribeToHash = (onChange: () => void) => {
+  window.addEventListener('hashchange', onChange)
+  return () => window.removeEventListener('hashchange', onChange)
+}
+
+// A hash someone typed by hand may not be valid percent-encoding.
+const decode = (text: string) => {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
+}
 
 function App() {
-  const [sections] = useState<Section[]>(() => loadContent())
-  const [currentPath, setCurrentPath] = useState<string>('')
-  const [currentPage, setCurrentPage] = useState<Page | null>(null)
+  const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash)
+  const [path = '', heading = ''] = decode(hash).replace(/^#\/?/, '').split('#')
+  // No hash: the first page, which is the project overview.
+  const currentPage = path ? pages.find(page => page.path === path) : pages[0]
 
-  // Initialize with first page
+  // The sidebar is off-screen on phones until the menu button opens it.
+  const [menuOpen, setMenuOpen] = useState(false)
+
   useEffect(() => {
-    if (sections.length > 0 && !currentPath) {
-      const firstPage = sections[0].pages[0]
-      if (firstPage) {
-        setCurrentPath(firstPage.path)
-        setCurrentPage(firstPage)
-      }
+    setMenuOpen(false)
+    const target = heading && document.getElementById(heading)
+    if (!target) {
+      window.scrollTo(0, 0)
+      return
     }
-  }, [sections, currentPath])
-
-  const handleNavigate = (path: string) => {
-    // Normalize path: remove leading slash if present
-    const normalizedPath = path.startsWith('/') ? path.slice(1) : path
-    setCurrentPath(normalizedPath)
-
-    // Find the page
-    for (const section of sections) {
-      const page = section.pages.find(p => p.path === normalizedPath)
-      if (page) {
-        setCurrentPage(page)
-        break
-      }
-    }
-  }
+    // A picture above the heading pushes it down when it finishes loading: scroll again then.
+    const scroll = () => target.scrollIntoView()
+    const loading = Array.from(document.images).filter(image => !image.complete)
+    scroll()
+    loading.forEach(image => image.addEventListener('load', scroll))
+    return () => loading.forEach(image => image.removeEventListener('load', scroll))
+  }, [path, heading])
 
   return (
     <div className="app">
-      <Sidebar
-        sections={sections}
-        currentPath={currentPath}
-        onNavigate={handleNavigate}
-      />
+      <button
+        className="menu-toggle"
+        aria-label="Toggle navigation"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen(open => !open)}
+      >
+        ☰
+      </button>
+
+      <Sidebar sections={sections} currentPath={currentPage?.path ?? ''} open={menuOpen} />
 
       <main className="content">
         {currentPage ? (
           <article className="article">
-            <MarkdownRenderer content={currentPage.content} onNavigate={handleNavigate} />
+            <MarkdownRenderer page={currentPage} />
           </article>
         ) : (
           <div className="empty-state">
-            <p>Select a page from the sidebar to get started</p>
+            <p>Page not found. Select a page from the sidebar.</p>
           </div>
         )}
       </main>

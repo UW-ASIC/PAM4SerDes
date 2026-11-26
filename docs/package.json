@@ -5,6 +5,7 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
+        "check": "bun check-renderer.mjs",
         "preview": "vite preview"
     },
     "dependencies": {

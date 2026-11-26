@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 684" width="1000" height="684" role="img" aria-labelledby="t d"
+     font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace" font-size="12">
+  <title id="t">Biasing: tx_bias and the other bias pins</title>
+  <desc id="d">tx_bias takes the 0.6 V reference vref, the enable tx_en and the 1.25 V supply vddo, and gives tx_pgood. It sinks six tail currents from pam4_driver. MSB path, 10.67 mA: pre 0.53 mA, main 8.53 mA, post 1.60 mA. LSB path, 5.33 mA: pre 0.27 mA, main 4.27 mA, post 0.80 mA. 16 mA in total. A seventh output, i_pdrv for the pre-drivers, is not connected. The other bias and reference pins: vctrl sets the gain of vga, vtt is the reference of rx_term, vdd is the 0.7 V core supply and vddo the 1.25 V supply of the transmitter output stage. There is no receiver bias block yet, and threshold_dac is not instantiated.</desc>
+
+  <!-- Source of analog/PAM4SerDes/docs/img/biasing.svg: plain boxes, straight connectors, text.
+       Edit this file, then run  python3 docs/diagrams/sketch.py  to redraw the hand-drawn version.
+       The colours and fonts below are only for looking at this file directly; sketch.py brings
+       its own. The five sources share the style block, the markers and the legend.
+
+       The six green bars are drawn to scale: 4 units of height per mA. -->
+  <style>
+    text   { fill: #1f2328; }
+    .title { font-size: 18px; font-weight: 700; }
+    .name  { font-size: 13px; font-weight: 700; }
+    .note  { fill: #57606a; }
+    .cmos  { fill: #dbeafe; stroke: #1d4ed8; }  /* CMOS logic, single-ended 0 / 0.7 V */
+    .cml   { fill: #ffedd5; stroke: #c2410c; }  /* CML, differential */
+    .ana   { fill: #dcfce7; stroke: #15803d; }  /* analog */
+    .clk   { fill: #f3e8ff; stroke: #7e22ce; }  /* clock generation */
+    .mix   { fill: url(#cmos2cml); stroke: #57606a; }  /* CMOS on one side, CML on the other */
+    .ext   { fill: #eaeef2; stroke: #6e7781; }  /* not on the chip, or ideal glue */
+    .ph    { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 6 3; }  /* placeholder cell */
+    .box   { fill: #ffffff; stroke: #8c959f; }  /* container: a structural block */
+    .w     { fill: none; stroke: #1f2328; stroke-width: 1.5; }  /* signal */
+    .wd    { fill: none; stroke: #1f2328; stroke-width: 2.5; }  /* main data path */
+    .wc    { fill: none; stroke: #7e22ce; stroke-width: 1.5; }  /* clock */
+    .wb    { fill: none; stroke: #15803d; stroke-width: 1.5; stroke-dasharray: 5 3; }  /* bias current */
+    .mid   { text-anchor: middle; }
+    .end   { text-anchor: end; }
+    .warn  { fill: #b91c1c; }
+    .amp   { fill: #15803d; }  /* a current, drawn to scale */
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#1f2328"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7e22ce"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#15803d"/></marker>
+    <linearGradient id="cmos2cml"><stop offset="0.5" stop-color="#dbeafe"/><stop offset="0.5" stop-color="#ffedd5"/></linearGradient>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="999" height="683" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="24" y="34" class="title">Biasing: tx_bias and the other bias pins</text>
+  <text x="24" y="54" class="note">tx_bias is the only bias block today. Each green bar is one tail current, as thick as its share of the 16 mA.</text>
+
+  <!-- ===== tx_bias and what goes in ===== -->
+  <rect class="ana" x="150" y="76" width="180" height="360" rx="4"/>
+  <text x="240" y="100" class="name mid">tx_bias</text>
+  <text x="240" y="118" class="note mid">sinks six tail currents</text>
+  <text x="240" y="133" class="note mid">from the driver. They</text>
+  <text x="240" y="148" class="note mid">set the swing, the 2:1</text>
+  <text x="240" y="163" class="note mid">MSB to LSB ratio and</text>
+  <text x="240" y="178" class="note mid">the FFE tap weights.</text>
+
+  <text x="118" y="226" class="name end">vref</text>
+  <text x="118" y="242" class="note end">0.6 V ref.</text>
+  <path class="w" marker-end="url(#a)" d="M124,230 H150"/>
+  <text x="118" y="276" class="name end">tx_en</text>
+  <text x="118" y="292" class="note end">enable</text>
+  <path class="w" marker-end="url(#a)" d="M124,280 H150"/>
+  <text x="118" y="326" class="name end">vddo</text>
+  <text x="118" y="342" class="note end">1.25 V supply</text>
+  <path class="w" marker-end="url(#a)" d="M124,330 H150"/>
+  <text x="118" y="384" class="name end">tx_pgood</text>
+  <path class="w" marker-end="url(#a)" d="M150,380 H124"/>
+
+  <!-- ===== the six tail currents, 4 units of height per mA ===== -->
+  <rect class="ana" x="830" y="76" width="146" height="316" rx="4"/>
+  <text x="903" y="222" class="name mid">pam4_driver</text>
+  <text x="903" y="240" class="note mid">one tail node</text>
+  <text x="903" y="255" class="note mid">per path and tap</text>
+
+  <text x="342" y="98"><tspan class="name">MSB path</tspan><tspan dx="10">10.67 mA</tspan></text>
+  <text x="342" y="122"><tspan class="name">i_msb_pre</tspan><tspan class="name" dx="10">0.53 mA</tspan><tspan class="note" dx="10">pre tap</tspan></text>
+  <rect class="amp" x="330" y="128" width="500" height="2.1"/>
+  <text x="342" y="150"><tspan class="name">i_msb_main</tspan><tspan class="name" dx="10">8.53 mA</tspan><tspan class="note" dx="10">main tap</tspan></text>
+  <rect class="amp" x="330" y="156" width="500" height="34.1"/>
+  <text x="342" y="210"><tspan class="name">i_msb_post</tspan><tspan class="name" dx="10">1.60 mA</tspan><tspan class="note" dx="10">post tap</tspan></text>
+  <rect class="amp" x="330" y="216" width="500" height="6.4"/>
+
+  <text x="342" y="256"><tspan class="name">LSB path</tspan><tspan dx="10">5.33 mA, half of the MSB path</tspan></text>
+  <text x="342" y="280"><tspan class="name">i_lsb_pre</tspan><tspan class="name" dx="10">0.27 mA</tspan><tspan class="note" dx="10">pre tap</tspan></text>
+  <rect class="amp" x="330" y="286" width="500" height="1.1"/>
+  <text x="342" y="308"><tspan class="name">i_lsb_main</tspan><tspan class="name" dx="10">4.27 mA</tspan><tspan class="note" dx="10">main tap</tspan></text>
+  <rect class="amp" x="330" y="314" width="500" height="17.1"/>
+  <text x="342" y="351"><tspan class="name">i_lsb_post</tspan><tspan class="name" dx="10">0.80 mA</tspan><tspan class="note" dx="10">post tap</tspan></text>
+  <rect class="amp" x="330" y="357" width="500" height="3.2"/>
+
+  <!-- the seventh output goes nowhere yet -->
+  <text x="342" y="408"><tspan class="name">i_pdrv</tspan><tspan class="warn" dx="10">pre-driver tail current: not connected. predriver_cml has no bias pin yet.</tspan></text>
+  <path class="ph" fill="none" d="M330,418 H560"/>
+  <path fill="none" stroke="#dc2626" stroke-width="2" d="M562,411 L576,425 M576,411 L562,425"/>
+
+  <text x="150" y="462">16 mA in total. Into 25 Ω that is 0.4 V peak, so 0.8 V peak-to-peak differential on txp / txn.</text>
+  <text x="150" y="478" class="note">In each path the three currents are 0.05, 0.80 and 0.15 of that path: the FFE weights of pre, main and post.</text>
+
+  <!-- ===== the other bias and reference pins ===== -->
+  <text x="24" y="514" class="name">The other bias and reference pins</text>
+
+  <text x="24" y="541" class="name">vctrl</text>
+  <text x="24" y="557" class="note">0 to 0.7 V</text>
+  <path class="w" marker-end="url(#a)" d="M104,544 H130"/>
+  <rect class="ana" x="130" y="524" width="112" height="40" rx="4"/>
+  <text x="186" y="541" class="name mid">vga</text>
+  <text x="186" y="557" class="note mid">gain control</text>
+
+  <text x="270" y="541" class="name">vtt</text>
+  <text x="270" y="557" class="note">reference</text>
+  <path class="w" marker-end="url(#a)" d="M342,544 H368"/>
+  <rect class="ana" x="368" y="524" width="112" height="40" rx="4"/>
+  <text x="424" y="541" class="name mid">rx_term</text>
+  <text x="424" y="557" class="note mid">termination</text>
+
+  <text x="508" y="541" class="name">vdd</text>
+  <text x="508" y="557" class="note">0.7 V</text>
+  <path class="w" marker-end="url(#a)" d="M580,544 H606"/>
+  <rect class="box" x="606" y="524" width="112" height="40" rx="4"/>
+  <text x="662" y="548" class="mid">core supply</text>
+
+  <text x="746" y="541" class="name">vddo</text>
+  <text x="746" y="557" class="note">1.25 V</text>
+  <path class="w" marker-end="url(#a)" d="M818,544 H844"/>
+  <rect class="box" x="844" y="524" width="132" height="40" rx="4"/>
+  <text x="910" y="541" class="mid">transmitter</text>
+  <text x="910" y="557" class="mid">output stage</text>
+
+  <!-- what is not there yet -->
+  <rect class="ph" x="24" y="582" width="236" height="34" rx="4" fill="#ffffff"/>
+  <text x="142" y="603" class="mid">no receiver bias block yet</text>
+  <rect class="ph" x="276" y="582" width="700" height="34" rx="4" fill="#ffffff"/>
+  <text x="626" y="603" class="mid">threshold_dac is not instantiated yet: the DFE model drives the slicer references</text>
+
+  <!-- ===== legend ===== -->
+  <g transform="translate(24,634)">
+    <rect class="cmos" width="14" height="14" rx="2"/><text x="24" y="11">CMOS logic, 0 / 0.7 V</text>
+    <rect class="cml" x="187" width="14" height="14" rx="2"/><text x="211" y="11">CML, differential 0.6 Vpp</text>
+    <rect class="ana" x="403" width="14" height="14" rx="2"/><text x="427" y="11">analog</text>
+    <rect class="clk" x="482" width="14" height="14" rx="2"/><text x="506" y="11">clocking</text>
+    <rect class="ph" x="576" width="14" height="14" rx="2" fill="#ffffff"/><text x="600" y="11">placeholder, ideal</text>
+    <rect class="ext" x="742" width="14" height="14" rx="2"/><text x="766" y="11">off chip / ideal glue</text>
+    <path class="w" marker-end="url(#a)" d="M0,31 H26"/><text x="38" y="35">signal</text>
+    <path class="wc" marker-end="url(#ac)" d="M94,31 H120"/><text x="132" y="35">clock</text>
+    <path class="wb" marker-end="url(#ab)" d="M180,31 H206"/><text x="218" y="35">bias current</text>
+    <rect class="mix" x="316" y="24" width="14" height="14" rx="2"/><text x="340" y="35">CMOS on one side, CML on the other</text>
+  </g>
+</svg>
