@@ -14,8 +14,6 @@ jobs:
     steps:
       - name: checkout repo
         uses: actions/checkout@v4
-        with:
-          submodules: true  # ponytail: AnalogLibrary has a broken nested gitlink, recurse once it is fixed
 
       # Analog-only flow
       - name: Read top module name (analog)
@@ -90,8 +88,6 @@ jobs:
     steps:
       - name: checkout repo
         uses: actions/checkout@v4
-        with:
-          submodules: true  # ponytail: AnalogLibrary has a broken nested gitlink, recurse once it is fixed
       - name: GL test
         uses: TinyTapeout/tt-gds-action/gl_test@ttsky25a
         with:

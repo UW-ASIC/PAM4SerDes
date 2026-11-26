@@ -8,8 +8,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          submodules: true  # ponytail: AnalogLibrary has a broken nested gitlink, recurse once it is fixed
       # Reads info.yaml, and generates PDF datasheet from your project
       # Uploads the pdf as an artifact
       - name: Build docs

@@ -8,8 +8,6 @@ jobs:
     steps:
       - name: checkout repo
         uses: actions/checkout@v4
-        with:
-          submodules: true  # ponytail: AnalogLibrary has a broken nested gitlink, recurse once it is fixed
       - name: FPGA bitstream for TT ASIC Sim (ICE40UP5K)
         uses: TinyTapeout/tt-gds-action/fpga/ice40up5k@ttsky25a
         with:
