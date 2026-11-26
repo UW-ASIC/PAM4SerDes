@@ -1,16 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Section } from '../utils/contentLoader'
 
 interface SidebarProps {
   sections: Section[]
   currentPath: string
-  onNavigate: (path: string) => void
+  /** Phones only: whether the menu button has slid the sidebar in. */
+  open: boolean
 }
 
-export function Sidebar({ sections, currentPath, onNavigate }: SidebarProps) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set()  // Start with all sections collapsed
-  )
+export function Sidebar({ sections, currentPath, open }: SidebarProps) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+
+  // Keep the section of the page being read open, also after a link or a reload.
+  const currentSection = currentPath.split('/')[0]
+  useEffect(() => {
+    setExpandedSections(prev => new Set(prev).add(currentSection))
+  }, [currentSection])
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => {
@@ -25,10 +30,11 @@ export function Sidebar({ sections, currentPath, onNavigate }: SidebarProps) {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${open ? 'open' : ''}`}>
       <div className="sidebar-header">
         <h1 className="logo">
-          <img src="/logo.png" alt="UWASIC Logo" />
+          {/* BASE_URL: the site is served from /PAM4SerDes/, not from the domain root */}
+          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="UWASIC Logo" />
           <span className="logo-text">UWASIC Docs</span>
         </h1>
       </div>
@@ -38,6 +44,7 @@ export function Sidebar({ sections, currentPath, onNavigate }: SidebarProps) {
           <div key={section.id} className="nav-section">
             <button
               className="section-header"
+              aria-expanded={expandedSections.has(section.id)}
               onClick={() => toggleSection(section.id)}
             >
               <span className={`chevron ${expandedSections.has(section.id) ? 'expanded' : ''}`}>
@@ -50,12 +57,12 @@ export function Sidebar({ sections, currentPath, onNavigate }: SidebarProps) {
               <ul className="page-list">
                 {section.pages.map(page => (
                   <li key={page.path}>
-                    <button
+                    <a
                       className={`page-link ${currentPath === page.path ? 'active' : ''}`}
-                      onClick={() => onNavigate(page.path)}
+                      href={`#/${page.path}`}
                     >
                       {page.metadata.title}
-                    </button>
+                    </a>
                   </li>
                 ))}
               </ul>

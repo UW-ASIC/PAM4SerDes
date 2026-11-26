@@ -1,0 +1,21 @@
+# The architecture of pam4_serdes, as the Verilog-A hierarchy implements it.
+# `make -C analog/PAM4SerDes/build/sim arch` (and CI) fails when the .va files stop
+# matching this file. If you change the architecture on purpose, regenerate it in the
+# same commit:  make -C analog/PAM4SerDes/build/sim arch UPDATE=1
+#
+# One line per module that places cells from other files, then the flattened cell count,
+# the ideal placeholders still in use, and the .va files nothing includes.
+pam4_serdes: bias_ref, clk_bias, refclk_buf x2, rx_bias, rx_cdr, rx_top, tx_pll, tx_top
+rx_afe: ctle, rx_term, vga
+rx_cdr: cdr_pd_linear, charge_pump, diff2se x2, div_n, lock_detect, loop_filter_rc, nor2, pfd, qdelay, vco
+rx_clkgen: clkbuf_cml, cml2cmos, dcc_cml, div2_cml x2, div2_tspc x2
+rx_decision: dfe1_unrolled_hr, pam4_dec x2, slicer x24, threshold_dac x24
+rx_deser_path: demux2_cml x6, demux2_cmos x24
+rx_top: rx_afe, rx_clkgen, rx_dec_retime x2, rx_decision, rx_deser_path x2
+tx_clkgen: clkbuf_cml, cml2cmos, dcc_cml, div2_cml, div2_tspc x3, phase_aligner
+tx_pll: charge_pump, div_n, lock_detect, loop_filter_rc, pfd, vco
+tx_ser_ffe_path: cml_dff_x4, dff_cmos_x32, dff_tspc_x8, ffe_tapgen_hr, mux2_cml_hr x5, mux2_cmos x24, mux2_cs x4
+tx_top: diff2se, pam4_driver, prbs_gray_src, predriver_cml x6, tx_bias, tx_clkgen, tx_predrv_bias, tx_ser_ffe_path x2
+cells: bias_ref x1, cdr_pd_linear x1, charge_pump x2, clk_bias x1, clkbuf_cml x2, cml2cmos x2, cml_dff_x4 x2, ctle x1, dcc_cml x2, demux2_cml x12, demux2_cmos x48, dfe1_unrolled_hr x1, dff_cmos_x32 x2, dff_tspc_x8 x2, diff2se x3, div2_cml x3, div2_tspc x5, div_n x2, ffe_tapgen_hr x2, lock_detect x2, loop_filter_rc x2, mux2_cml_hr x10, mux2_cmos x48, mux2_cs x8, nor2 x1, pam4_dec x2, pam4_driver x1, pfd x2, phase_aligner x1, prbs_gray_src x1, predriver_cml x6, qdelay x1, refclk_buf x2, rx_bias x1, rx_dec_retime x2, rx_term x1, slicer x24, threshold_dac x24, tx_bias x1, tx_predrv_bias x1, vco x2, vga x1
+placeholders: div2_cml, mux2_cs
+not in the design: Receiver/Slicer/pam4_slicer.va

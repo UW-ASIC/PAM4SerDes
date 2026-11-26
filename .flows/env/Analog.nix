@@ -13,6 +13,45 @@ let
   # plain `ngspice` (a binary only) cannot satisfy.
   ngspiceShared = pkgs.libngspice;
 
+  # The Verilog-A hierarchy (`make -C analog/<block>/build/sim link`) needs ngspice 45 or
+  # newer: 44 cannot place an OSDI device with more than 18 pins, and several cells have
+  # more. The pinned nixpkgs ships 45; this makes the shell fail to build, with a reason,
+  # if a later pin ever brings an older one.
+  ngspice =
+    assert pkgs.lib.assertMsg (pkgs.lib.versionAtLeast pkgs.ngspice.version "45")
+      "ngspice ${pkgs.ngspice.version} is too old: the Verilog-A hierarchy needs 45 or newer";
+    pkgs.ngspice;
+
+  # VerA, the Verilog-A compiler, from the EDA-Packaged pin (nixpkgs does not carry it).
+  # As published (EDA-Packaged 13c09bb, VerA 0.23) it needs two repairs:
+  #
+  #  - It does not build on Linux. Inside the nix sandbox Zig picks the musl ABI, and
+  #    VerA's VPI library refuses to compile for it ("dynlib on Linux needs glibc").
+  #    Naming a glibc target fixes that; the `vera` binary itself stays static.
+  #  - `vera --emit-osdi` runs `zig` from PATH and needs the Zig it was built with. With
+  #    another one (or none) every device build fails, so that Zig is wrapped in.
+  #
+  # ponytail: use edaPkgs.vera directly once EDA-Packaged's vera builds and runs as published.
+  veraTarget = "-Dtarget=${pkgs.stdenv.hostPlatform.parsed.cpu.name}-linux-gnu";
+  veraBuilt = edaPkgs.vera.overrideAttrs (
+    old:
+    pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+      buildPhase = builtins.replaceStrings [ "zig build " ] [ "zig build ${veraTarget} " ] old.buildPhase;
+      installPhase = builtins.replaceStrings [ "zig build " ] [ "zig build ${veraTarget} " ] old.installPhase;
+    }
+  );
+  veraZig = builtins.head (
+    builtins.filter (p: pkgs.lib.hasPrefix "zig-" (p.name or "")) edaPkgs.vera.nativeBuildInputs
+  );
+  vera = pkgs.symlinkJoin {
+    name = "vera-${veraBuilt.version}";
+    paths = [ veraBuilt ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      wrapProgram $out/bin/vera --prefix PATH : ${veraZig}/bin
+    '';
+  };
+
   # Hands KLayout a pandas for its interpreter since SKY130 PDK's KLayout macros import
   # pandas but KLayout runs its own embedded Python different from the shell's. KLayout
   # ignores PYTHONPATH; KLAYOUT_PYTHONPATH is the variable it reads.
@@ -28,6 +67,9 @@ let
   };
 in
 {
+  # Exported on their own for .flows/env/va.nix, the small shell CI checks the Verilog-A in.
+  inherit vera ngspice;
+
   packages = [
     # EDA tools, straight from nixpkgs.
     pkgs.xschem
@@ -38,8 +80,12 @@ in
     # under any attribute, which is why it comes through the EDA-Packaged pin.
     edaPkgs.netgen
     ngspiceShared
-    pkgs.ngspice
+    ngspice
     pkgs.magic-vlsi
+
+    # VerA (defined above): it lints the models and builds the OSDI devices that ngspice
+    # loads (.flows/tools/va_deck.py). It brings the Zig it needs with it.
+    vera
 
     # Netlist-first flow. cktimgPkg ships `cktimg-json`, which .flows/tools/
     # cktimg_to_xschem.py shells out to; spicerackPkg is a Python package and is reached

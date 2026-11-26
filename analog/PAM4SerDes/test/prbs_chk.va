@@ -1,0 +1,70 @@
+// PRBS7 checker for the receiver's output words. Test equipment, not part of the design.
+//
+// On every falling edge of the word clock (the words change on its rising edge) it reads
+// rxd_m and rxd_l, puts them back in transmit order (slot 0 first; per slot the MSB then
+// the LSB) and tests each bit against the PRBS7 rule of prbs_gray_src:
+// bit[n] = bit[n-7] xor bit[n-6]. The check synchronises itself, so it does not need to
+// know where a word starts, but a wire in the wrong slot breaks it.
+// Seven zeros in a row never occur in PRBS7, so a stuck-low link counts as errors too.
+//
+// err   = errors counted so far, in volts (3 errors -> 3 V)
+// words = words checked so far, in volts
+// Words before tstart are ignored: reset, pipeline fill and clock settling.
+
+`ifndef PAM4_PRBS_CHK_VA
+`define PAM4_PRBS_CHK_VA
+
+`include "disciplines.vams"
+
+module prbs_chk(clk, m, l, err, words);
+  input clk;
+  input [0:31] m, l;
+  output err, words;
+  electrical clk, err, words;
+  electrical [0:31] m, l;
+
+  (* desc = "logic threshold of the clock and data inputs", units = "V" *)
+  parameter real vth = 0.35;
+  (* desc = "time before which words are ignored", units = "s" *)
+  parameter real tstart = 8n from [0:inf);
+
+  integer sr, filled, nerr, nword, j, i, b;
+  real vm[0:31], vl[0:31];
+  genvar k;
+
+  analog begin
+    for (k = 0; k < 32; k = k + 1) begin
+      vm[k] = V(m[k]);
+      vl[k] = V(l[k]);
+    end
+
+    @(initial_step) begin
+      sr = 0;
+      filled = 0;
+      nerr = 0;
+      nword = 0;
+    end
+
+    @(cross(V(clk) - vth, -1)) begin
+      if ($abstime >= tstart) begin
+        for (j = 0; j < 32; j = j + 1) begin
+          for (i = 0; i < 2; i = i + 1) begin
+            b = ((i == 0 ? vm[j] : vl[j]) > vth) ? 1 : 0;
+            // sr holds the last seven bits, newest in bit 0
+            if (filled >= 7 && (b != (((sr >> 6) ^ (sr >> 5)) & 1) || sr == 0))
+              nerr = nerr + 1;
+            sr = ((sr << 1) | b) & 127;
+            filled = filled + 1;
+          end
+        end
+        nword = nword + 1;
+      end
+    end
+
+    // an integer stepping instantly stalls the simulator's time step: ramp it
+    V(err) <+ transition(nerr, 0, 20p);
+    V(words) <+ transition(nword, 0, 20p);
+  end
+endmodule
+
+`endif

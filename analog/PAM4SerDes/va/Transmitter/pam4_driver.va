@@ -1,42 +1,79 @@
-//! sweep V(msbp) = 1.1, 1.3
-//! sweep V(lsbp) = 1.1, 1.3
-//! bias V(msbn) = 1.2
-//! bias V(lsbn) = 1.2
+//! sweep V(msb_main_p) = 1.1, 1.3
+//! sweep V(lsb_main_p) = 1.1, 1.3
+//! bias V(msb_main_n) = 1.2
+//! bias V(lsb_main_n) = 1.2
+//! bias V(msb_pre_p) = 1.1, V(msb_pre_n) = 1.2, V(msb_post_p) = 1.1, V(msb_post_n) = 1.2
+//! bias V(lsb_pre_p) = 1.1, V(lsb_pre_n) = 1.2, V(lsb_post_p) = 1.1, V(lsb_post_n) = 1.2
 
-//! solve 
+//! solve
 //! print none
 
-`include "disciplines.vams" 
+// The output swing now comes from the tail currents tx_bias sinks from the i_* pins,
+// so a standalone run (nothing on the i_* pins) prints VDIFF = 0. The four PAM4 levels
+// are checked with tx_bias attached in test/tx_driver_test.sp.
 
-module pam4_driver(msbp, msbn, lsbp, lsbn, outp, outn); 
+`include "disciplines.vams"
 
-    input msbp, msbn, lsbp, lsbn;
+module pam4_driver(msb_pre_p, msb_pre_n, msb_main_p, msb_main_n, msb_post_p, msb_post_n,
+                   lsb_pre_p, lsb_pre_n, lsb_main_p, lsb_main_n, lsb_post_p, lsb_post_n,
+                   i_msb_pre, i_msb_main, i_msb_post, i_lsb_pre, i_lsb_main, i_lsb_post,
+                   outp, outn, vss);
+
+    // one differential input per FFE tap (ffe_tapgen_hr -> final mux2_cml_hr -> predriver_cml)
+    input msb_pre_p, msb_pre_n, msb_main_p, msb_main_n, msb_post_p, msb_post_n;
+    input lsb_pre_p, lsb_pre_n, lsb_main_p, lsb_main_n, lsb_post_p, lsb_post_n;
+    // one tail node per tap: tx_bias sinks that tap's current from it
+    inout i_msb_pre, i_msb_main, i_msb_post, i_lsb_pre, i_lsb_main, i_lsb_post;
     output outp, outn;
+    inout vss;
 
-    electrical msbp, msbn, lsbp, lsbn, outp, outn; 
+    electrical msb_pre_p, msb_pre_n, msb_main_p, msb_main_n, msb_post_p, msb_post_n;
+    electrical lsb_pre_p, lsb_pre_n, lsb_main_p, lsb_main_n, lsb_post_p, lsb_post_n;
+    electrical i_msb_pre, i_msb_main, i_msb_post, i_lsb_pre, i_lsb_main, i_lsb_post;
+    electrical outp, outn, vss;
 
-    parameter real vcm  = 0.9 from (0:inf); //common-mode vol (Voutp + Voutn)/2
-    parameter real vppd = 0.8 from (0:inf); //total differential peak-to-peak span
+    parameter real vcm   = 0.9 from (0:inf);  //common-mode vol (Voutp + Voutn)/2
+    parameter real rload = 25.0 from (0:inf); //load each tail current develops the swing in: 50 ohm termination || 50 ohm line
+    parameter real vtail = 0.6 from (0:inf);  //voltage the tail nodes are held at (tx_bias needs > its vdsat)
 
-    real msb_sign; 
+    real msb_sign;
     real lsb_sign;
-    real weighted_code;
+    real idiff;
     real vdiff;
 
-    analog begin 
+    analog begin
 
-        msb_sign = (V(msbp) > V(msbn)) ? 1.0 : -1.0; 
-        lsb_sign = (V(lsbp) > V(lsbn)) ? 1.0 : -1.0;
+        // hold the tail nodes; the current through each hold is that tap's tail current
+        V(i_msb_pre,  vss) <+ vtail;
+        V(i_msb_main, vss) <+ vtail;
+        V(i_msb_post, vss) <+ vtail;
+        V(i_lsb_pre,  vss) <+ vtail;
+        V(i_lsb_main, vss) <+ vtail;
+        V(i_lsb_post, vss) <+ vtail;
 
-        weighted_code = 2.0 * msb_sign + lsb_sign; //create 2:1 PAM4 weighting
+        // each tap steers its tail current by the sign of its input. tx_bias sizes the
+        // currents 2:1 (MSB:LSB) and by |tap weight|, which creates the PAM4 weighting:
         //00 -> -3
         //01 -> -1
         //10 -> +1
         //11 -> +3
+        // I(i_x, vss) is the current through the hold, minus the tail current.
+        msb_sign = (V(msb_main_p) > V(msb_main_n)) ? 1.0 : -1.0;
+        lsb_sign = (V(lsb_main_p) > V(lsb_main_n)) ? 1.0 : -1.0;
+        idiff = -msb_sign * I(i_msb_main, vss) - lsb_sign * I(i_lsb_main, vss);
 
-        vdiff = weighted_code * (vppd / 6.0); //-3 -> +3 is span of 6
+        // pre and post cursors subtract: their FFE weights are negative
+        msb_sign = (V(msb_pre_p) > V(msb_pre_n)) ? 1.0 : -1.0;
+        lsb_sign = (V(lsb_pre_p) > V(lsb_pre_n)) ? 1.0 : -1.0;
+        idiff = idiff + msb_sign * I(i_msb_pre, vss) + lsb_sign * I(i_lsb_pre, vss);
 
-        V(outp) <+ vcm + vdiff/2.0; 
+        msb_sign = (V(msb_post_p) > V(msb_post_n)) ? 1.0 : -1.0;
+        lsb_sign = (V(lsb_post_p) > V(lsb_post_n)) ? 1.0 : -1.0;
+        idiff = idiff + msb_sign * I(i_msb_post, vss) + lsb_sign * I(i_lsb_post, vss);
+
+        vdiff = idiff * rload; //16 mA total, every tap adding -> 0.4 V peak (0.8 Vppd)
+
+        V(outp) <+ vcm + vdiff/2.0;
         V(outn) <+ vcm - vdiff/2.0;
 
         $strobe("OUTP = %g V, OUTN = %g V, VDIFF = %g V", //print

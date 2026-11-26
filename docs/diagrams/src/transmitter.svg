@@ -1,0 +1,250 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 846" width="1000" height="846" role="img" aria-labelledby="t d"
+     font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace" font-size="12">
+  <title id="t">Transmitter: one serializer path, level by level</title>
+  <desc id="d">One of the two binary paths of the transmitter. prbs_gray_src gives 32 lanes at 0.875 Gb/s. L0 dff_cmos_x32 retimes them on clk0p875. L1, 16 mux2_cmos selected by clk0p875, gives 16 lanes at 1.75 Gb/s. L2, 8 mux2_cmos selected by clk1p75, gives 8 lanes at 3.5 Gb/s. dff_tspc_x8 retimes on clk3p5. L3, 4 mux2_cs on clk3p5, an ideal placeholder, gives 4 lanes at 7 Gb/s and goes from CMOS to CML. cml_dff_x4 retimes on clk7. L4, 2 mux2_cml_hr selected by clk7, gives the even and odd streams at 14 Gb/s. ffe_tapgen_hr on clk14 makes pre, main and post taps as even and odd streams. FIN, 3 mux2_cml_hr on clk14, gives pre, main and post at 28 Gb/s. Both paths then go through 6 predriver_cml into pam4_driver, whose six tail currents come from tx_bias.</desc>
+
+  <!-- Source of analog/PAM4SerDes/docs/img/transmitter.svg: plain boxes, straight connectors, text.
+       Edit this file, then run  python3 docs/diagrams/sketch.py  to redraw the hand-drawn version.
+       The colours and fonts below are only for looking at this file directly; sketch.py brings
+       its own. The five sources share the style block, the markers and the legend.
+
+       Rows: one per serializer level, 46 apart. In a row at y: level tag, cell (x 98..294),
+       clock (text from x 324), lane strip (x 506..602) and its label.
+       Lane strips: one strip is 96 wide and stands for the path's 28 Gb/s. It is a 20-thick
+       line whose dashes are the lanes: N lanes -> stroke-dasharray "(96/N - 1) 1". -->
+  <style>
+    text   { fill: #1f2328; }
+    .title { font-size: 18px; font-weight: 700; }
+    .name  { font-size: 13px; font-weight: 700; }
+    .note  { fill: #57606a; }
+    .cmos  { fill: #dbeafe; stroke: #1d4ed8; }  /* CMOS logic, single-ended 0 / 0.7 V */
+    .cml   { fill: #ffedd5; stroke: #c2410c; }  /* CML, differential */
+    .ana   { fill: #dcfce7; stroke: #15803d; }  /* analog */
+    .clk   { fill: #f3e8ff; stroke: #7e22ce; }  /* clock generation */
+    .mix   { fill: url(#cmos2cml); stroke: #57606a; }  /* CMOS on one side, CML on the other */
+    .ext   { fill: #eaeef2; stroke: #6e7781; }  /* not on the chip, or ideal glue */
+    .ph    { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 6 3; }  /* placeholder cell */
+    .box   { fill: #ffffff; stroke: #8c959f; }  /* container: a structural block */
+    .w     { fill: none; stroke: #1f2328; stroke-width: 1.5; }  /* signal */
+    .wd    { fill: none; stroke: #1f2328; stroke-width: 2.5; }  /* main data path */
+    .wc    { fill: none; stroke: #7e22ce; stroke-width: 1.5; }  /* clock */
+    .wb    { fill: none; stroke: #15803d; stroke-width: 1.5; stroke-dasharray: 5 3; }  /* bias current */
+    .mid   { text-anchor: middle; }
+    .end   { text-anchor: end; }
+    .tag   { fill: #eaeef2; }
+    .ck    { fill: #7e22ce; font-weight: 700; }
+    .warn  { fill: #b91c1c; }
+    .lane  { fill: none; stroke-width: 20; }
+    .lc    { stroke: #93c5fd; }  /* CMOS lanes */
+    .ll    { stroke: #fdba74; }  /* CML lanes */
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#1f2328"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7e22ce"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#15803d"/></marker>
+    <linearGradient id="cmos2cml"><stop offset="0.5" stop-color="#dbeafe"/><stop offset="0.5" stop-color="#ffedd5"/></linearGradient>
+    <linearGradient id="cmos2cml_down" x1="0" y1="0" x2="0" y2="1"><stop offset="0.5" stop-color="#dbeafe"/><stop offset="0.5" stop-color="#ffedd5"/></linearGradient>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="999" height="845" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="24" y="34" class="title">Transmitter: one serializer path, level by level</text>
+  <text x="24" y="54" class="note">Each 2:1 level halves the lanes and doubles their rate, so the path stays at 28 Gb/s. The tap generator then makes three copies.</text>
+
+  <text x="98" y="82" class="note">cell</text>
+  <text x="324" y="82" class="note">clock that drives it</text>
+  <text x="506" y="82" class="note">lanes after the cell: one box per lane, a strip is 28 Gb/s wide</text>
+
+  <!-- which logic family: CMOS down to the middle of L3, CML below -->
+  <rect x="27" y="92" width="6" height="275" fill="#1d4ed8"/>
+  <rect x="27" y="367" width="6" height="207" fill="#c2410c"/>
+  <text transform="translate(20,230) rotate(-90)" class="mid">CMOS logic, 0 / 0.7 V</text>
+  <text transform="translate(20,470) rotate(-90)" class="mid">CML, differential</text>
+
+  <!-- source -->
+  <rect class="cmos" x="98" y="92" width="196" height="34" rx="4"/>
+  <text x="196" y="114" class="name mid">prbs_gray_src</text>
+  <path class="wc" marker-end="url(#ac)" d="M312,109 H294"/>
+  <text x="324" y="106"><tspan class="ck">clk0p875</tspan><tspan class="note" dx="7">0.875 GHz CMOS</tspan></text>
+  <text x="324" y="121" class="note">new word on rising edge</text>
+  <path class="lane lc" stroke-dasharray="2 1" d="M506,109 H602"/>
+  <text x="618" y="106" class="name">32 lanes x 0.875 Gb/s</text>
+  <text x="618" y="121" class="note">this path's half of the 64-bit PRBS7 word</text>
+
+  <!-- ===== tx_ser_ffe_path ===== -->
+  <rect class="box" x="40" y="138" width="944" height="448" rx="6"/>
+  <text x="212" y="156"><tspan class="name">tx_ser_ffe_path</tspan> one binary path. There are two: the MSB path and the LSB path.</text>
+  <path class="wd" marker-end="url(#a)" d="M196,126 V166"/>
+
+  <!-- L0 -->
+  <rect class="tag" x="46" y="172" width="44" height="22" rx="11"/><text x="68" y="188" class="name mid">L0</text>
+  <rect class="cmos" x="98" y="166" width="196" height="34" rx="4"/>
+  <text x="196" y="188" class="name mid">dff_cmos_x32</text>
+  <path class="wd" marker-end="url(#a)" d="M196,200 V212"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,183 H294"/>
+  <text x="324" y="180"><tspan class="ck">clk0p875</tspan><tspan class="note" dx="7">0.875 GHz CMOS</tspan></text>
+  <text x="324" y="195" class="note">rising edge</text>
+  <path class="lane lc" stroke-dasharray="2 1" d="M506,183 H602"/>
+  <text x="618" y="180" class="name">32 lanes x 0.875 Gb/s</text>
+  <text x="618" y="195" class="note">retimed</text>
+
+  <!-- L1 -->
+  <rect class="tag" x="46" y="218" width="44" height="22" rx="11"/><text x="68" y="234" class="name mid">L1</text>
+  <rect class="cmos" x="98" y="212" width="196" height="34" rx="4"/>
+  <text x="196" y="234" class="name mid">16 x mux2_cmos</text>
+  <path class="wd" marker-end="url(#a)" d="M196,246 V258"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,229 H294"/>
+  <text x="324" y="226"><tspan class="ck">clk0p875</tspan><tspan class="note" dx="7">0.875 GHz CMOS</tspan></text>
+  <text x="324" y="241" class="note">select</text>
+  <path class="lane lc" stroke-dasharray="5 1" d="M506,229 H602"/>
+  <text x="618" y="233" class="name">16 lanes x 1.75 Gb/s</text>
+
+  <!-- L2 -->
+  <rect class="tag" x="46" y="264" width="44" height="22" rx="11"/><text x="68" y="280" class="name mid">L2</text>
+  <rect class="cmos" x="98" y="258" width="196" height="34" rx="4"/>
+  <text x="196" y="280" class="name mid">8 x mux2_cmos</text>
+  <path class="wd" marker-end="url(#a)" d="M196,292 V304"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,275 H294"/>
+  <text x="324" y="272"><tspan class="ck">clk1p75</tspan><tspan class="note" dx="7">1.75 GHz CMOS</tspan></text>
+  <text x="324" y="287" class="note">select</text>
+  <path class="lane lc" stroke-dasharray="11 1" d="M506,275 H602"/>
+  <text x="618" y="279" class="name">8 lanes x 3.5 Gb/s</text>
+
+  <!-- R -->
+  <rect class="tag" x="46" y="310" width="44" height="22" rx="11"/><text x="68" y="326" class="name mid">R</text>
+  <rect class="cmos" x="98" y="304" width="196" height="34" rx="4"/>
+  <text x="196" y="326" class="name mid">dff_tspc_x8</text>
+  <path class="wd" marker-end="url(#a)" d="M196,338 V350"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,321 H294"/>
+  <text x="324" y="318"><tspan class="ck">clk3p5</tspan><tspan class="note" dx="7">3.5 GHz CMOS</tspan></text>
+  <text x="324" y="333" class="note">rising edge</text>
+  <path class="lane lc" stroke-dasharray="11 1" d="M506,321 H602"/>
+  <text x="618" y="318" class="name">8 lanes x 3.5 Gb/s</text>
+  <text x="618" y="333" class="note">retimed</text>
+
+  <!-- L3: the hand-off from CMOS to CML -->
+  <rect class="tag" x="46" y="356" width="44" height="22" rx="11"/><text x="68" y="372" class="name mid">L3</text>
+  <rect class="ph" x="98" y="350" width="196" height="34" rx="4" fill="url(#cmos2cml_down)"/>
+  <text x="196" y="372" class="name mid">4 x mux2_cs</text>
+  <path class="wd" marker-end="url(#a)" d="M196,384 V396"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,367 H294"/>
+  <text x="324" y="364"><tspan class="ck">clk3p5</tspan><tspan class="note" dx="7">3.5 GHz CMOS</tspan></text>
+  <text x="324" y="379" class="note">select: clk3p5, clk3p5b</text>
+  <path class="lane ll" stroke-dasharray="23 1" d="M506,367 H602"/>
+  <text x="618" y="364"><tspan class="name">4 lanes x 7 Gb/s</tspan><tspan class="note" dx="10">CMOS in, CML out</tspan></text>
+  <text x="618" y="379" class="warn">placeholder: an ideal cell, nobody owns it yet</text>
+
+  <!-- R -->
+  <rect class="tag" x="46" y="402" width="44" height="22" rx="11"/><text x="68" y="418" class="name mid">R</text>
+  <rect class="cml" x="98" y="396" width="196" height="34" rx="4"/>
+  <text x="196" y="418" class="name mid">cml_dff_x4</text>
+  <path class="wd" marker-end="url(#a)" d="M196,430 V442"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,413 H294"/>
+  <text x="324" y="410"><tspan class="ck">clk7</tspan><tspan class="note" dx="7">7 GHz CML</tspan></text>
+  <text x="324" y="425" class="note">rising edge</text>
+  <path class="lane ll" stroke-dasharray="23 1" d="M506,413 H602"/>
+  <text x="618" y="410" class="name">4 lanes x 7 Gb/s</text>
+  <text x="618" y="425" class="note">retimed. Lane 0 also goes to the phase_aligner.</text>
+
+  <!-- L4 -->
+  <rect class="tag" x="46" y="448" width="44" height="22" rx="11"/><text x="68" y="464" class="name mid">L4</text>
+  <rect class="cml" x="98" y="442" width="196" height="34" rx="4"/>
+  <text x="196" y="464" class="name mid">2 x mux2_cml_hr</text>
+  <path class="wd" marker-end="url(#a)" d="M196,476 V494"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,459 H294"/>
+  <text x="324" y="456"><tspan class="ck">clk7</tspan><tspan class="note" dx="7">7 GHz CML</tspan></text>
+  <text x="324" y="471" class="note">select</text>
+  <path class="lane ll" stroke-dasharray="47 1" d="M506,459 H602"/>
+  <text x="530" y="463" class="mid">even</text><text x="578" y="463" class="mid">odd</text>
+  <text x="618" y="456" class="name">2 lanes x 14 Gb/s</text>
+  <text x="618" y="471" class="note">even and odd symbols: half rate from here on</text>
+
+  <!-- the two streams fan out to the three taps -->
+  <path class="w" d="M554,469 V480"/>
+  <path class="w" d="M554,480 H770"/>
+  <path class="w" marker-end="url(#a)" d="M554,480 V500"/>
+  <path class="w" marker-end="url(#a)" d="M662,480 V500"/>
+  <path class="w" marker-end="url(#a)" d="M770,480 V500"/>
+
+  <!-- TG -->
+  <rect class="tag" x="46" y="500" width="44" height="22" rx="11"/><text x="68" y="516" class="name mid">TG</text>
+  <rect class="cml" x="98" y="494" width="196" height="34" rx="4"/>
+  <text x="196" y="516" class="name mid">ffe_tapgen_hr</text>
+  <path class="wd" marker-end="url(#a)" d="M196,528 V540"/>
+  <path class="wc" marker-end="url(#ac)" d="M312,511 H294"/>
+  <text x="324" y="508"><tspan class="ck">clk14</tspan><tspan class="note" dx="7">14 GHz CML</tspan></text>
+  <text x="324" y="523" class="note">x[n], x[n-1], x[n-2]</text>
+  <path class="lane ll" stroke-dasharray="47 1" d="M506,511 H602"/>
+  <path class="lane ll" stroke-dasharray="47 1" d="M614,511 H710"/>
+  <path class="lane ll" stroke-dasharray="47 1" d="M722,511 H818"/>
+  <text x="530" y="515" class="mid">even</text><text x="578" y="515" class="mid">odd</text>
+  <text x="638" y="515" class="mid">even</text><text x="686" y="515" class="mid">odd</text>
+  <text x="746" y="515" class="mid">even</text><text x="794" y="515" class="mid">odd</text>
+  <text x="832" y="508" class="name">6 x 14 Gb/s</text>
+  <text x="832" y="523" class="note">3 taps, even + odd</text>
+
+  <!-- FIN -->
+  <rect class="tag" x="46" y="546" width="44" height="22" rx="11"/><text x="68" y="562" class="name mid">FIN</text>
+  <rect class="cml" x="98" y="540" width="196" height="34" rx="4"/>
+  <text x="196" y="562" class="name mid">3 x mux2_cml_hr</text>
+  <path class="wc" marker-end="url(#ac)" d="M312,557 H294"/>
+  <text x="324" y="554"><tspan class="ck">clk14</tspan><tspan class="note" dx="7">14 GHz CML</tspan></text>
+  <text x="324" y="569" class="note">select, one mux per tap</text>
+  <path class="lane ll" stroke-dasharray="95 1" d="M506,557 H602"/>
+  <path class="lane ll" stroke-dasharray="95 1" d="M614,557 H710"/>
+  <path class="lane ll" stroke-dasharray="95 1" d="M722,557 H818"/>
+  <text x="554" y="561" class="mid">pre x[n]</text>
+  <text x="662" y="561" class="mid">main x[n-1]</text>
+  <text x="770" y="561" class="mid">post x[n-2]</text>
+  <text x="832" y="554" class="name">3 x 28 Gb/s</text>
+  <text x="832" y="569" class="note">one stream per tap</text>
+
+  <!-- ===== output stage, shared by both paths ===== -->
+  <path class="wd" marker-end="url(#a)" d="M554,567 V604"/>
+  <path class="wd" marker-end="url(#a)" d="M662,567 V604"/>
+  <path class="wd" marker-end="url(#a)" d="M770,567 V604"/>
+  <rect class="cml" x="506" y="604" width="312" height="34" rx="4"/>
+  <text x="662" y="626" class="name mid">6 x predriver_cml<tspan class="note" dx="10" font-weight="400" font-size="12">one per path and tap</tspan></text>
+  <path class="wd" marker-end="url(#a)" d="M662,638 V664"/>
+
+  <rect class="box" x="98" y="599" width="196" height="44" rx="4"/>
+  <text x="196" y="618" class="name mid">the LSB path</text>
+  <text x="196" y="635" class="note mid">a second tx_ser_ffe_path</text>
+  <path class="wd" marker-end="url(#a)" d="M294,621 H506"/>
+  <text x="400" y="614" class="mid">its 3 taps</text>
+
+  <rect class="ana" x="506" y="664" width="312" height="44" rx="4"/>
+  <text x="662" y="683" class="name mid">pam4_driver</text>
+  <text x="662" y="700" class="note mid">adds the 6 taps: MSB path = 2 x LSB path</text>
+  <path class="wd" marker-end="url(#a)" d="M818,686 H864"/>
+  <text x="884" y="682" class="name">txp / txn</text>
+  <text x="884" y="699" class="note">28 GBd PAM4</text>
+  <text x="884" y="715" class="note">0.8 Vpp diff.</text>
+
+  <rect class="ana" x="98" y="664" width="196" height="44" rx="4"/>
+  <text x="196" y="683" class="name mid">tx_bias</text>
+  <text x="196" y="700" class="note mid">sinks the tail currents</text>
+  <path class="wb" marker-end="url(#ab)" d="M294,686 H506"/>
+  <text x="400" y="679" class="mid">6 tail currents</text>
+  <text x="400" y="702" class="mid">16 mA in total</text>
+  <path class="w" marker-end="url(#a)" d="M150,728 V708"/>
+  <text x="150" y="749" class="mid">vref<tspan class="note" dx="7">0.6 V</tspan></text>
+  <path class="w" marker-end="url(#a)" d="M242,728 V708"/>
+  <text x="242" y="749" class="mid">tx_en</text>
+  <text x="506" y="732" class="note">Weights: pre 0.05, main 0.80, post 0.15. Pre and post subtract.</text>
+
+  <text x="40" y="774" class="note">Lane order: lane j carries time slot j, and slot 0 is sent first. A 2:1 level merges lane k (first) with lane k + N/2.</text>
+
+  <!-- ===== legend ===== -->
+  <g transform="translate(24,796)">
+    <rect class="cmos" width="14" height="14" rx="2"/><text x="24" y="11">CMOS logic, 0 / 0.7 V</text>
+    <rect class="cml" x="187" width="14" height="14" rx="2"/><text x="211" y="11">CML, differential 0.6 Vpp</text>
+    <rect class="ana" x="403" width="14" height="14" rx="2"/><text x="427" y="11">analog</text>
+    <rect class="clk" x="482" width="14" height="14" rx="2"/><text x="506" y="11">clocking</text>
+    <rect class="ph" x="576" width="14" height="14" rx="2" fill="#ffffff"/><text x="600" y="11">placeholder, ideal</text>
+    <rect class="ext" x="742" width="14" height="14" rx="2"/><text x="766" y="11">off chip / ideal glue</text>
+    <path class="w" marker-end="url(#a)" d="M0,31 H26"/><text x="38" y="35">signal</text>
+    <path class="wc" marker-end="url(#ac)" d="M94,31 H120"/><text x="132" y="35">clock</text>
+    <path class="wb" marker-end="url(#ab)" d="M180,31 H206"/><text x="218" y="35">bias current</text>
+    <rect class="mix" x="316" y="24" width="14" height="14" rx="2"/><text x="340" y="35">CMOS on one side, CML on the other</text>
+  </g>
+</svg>

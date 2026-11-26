@@ -109,9 +109,10 @@ module dff_tspc_1lane(clk, d, q, vdd, vss);
     @(above(vth - vc))
       cst = 0;
 
-    // Breakpoints
-    @(timer(t50 - 0.5 * trf)) ;
-    @(timer(t50 + 0.5 * trf)) ;
+    // A step bound keeps the output edge resolved. It replaces two timer() breakpoints on
+    // the edge's corners: ngspice stops with "timestep too small" when two cells ask for
+    // time points closer together than its minimum step (see CHANGELOGS.md).
+    $bound_step(0.25 * trf);
 
     @(final_step)
       if (n_su > 0 || n_h > 0)

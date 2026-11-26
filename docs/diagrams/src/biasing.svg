@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 684" width="1000" height="684" role="img" aria-labelledby="t d"
+     font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace" font-size="12">
+  <title id="t">Biasing: one reference, one wire per consumer</title>
+  <desc id="d">bias_ref makes the reference: 0.6 V vref to tx_bias and 100 uA each to rx_bias and clk_bias. tx_bias sinks the six tail currents of pam4_driver, 16 mA in total, and one 6 mA current that tx_predrv_bias turns into six 100 uA references, one per predriver_cml. rx_bias makes vtt (0.55 V) for rx_term, vctrl (0.35 V) for vga, and 38 reference currents for ctle, vga, the 24 slicers and the 12 CML demultiplexers. clk_bias makes 12 reference currents for the clocking cells. The cells in dashed boxes have no bias pin yet, so their currents end at the top level. 24 threshold_dac cells give the 24 slicers their references.</desc>
+
+  <!-- Source of analog/PAM4SerDes/docs/img/biasing.svg: plain boxes, straight connectors, text.
+       Edit this file, then run  python3 docs/diagrams/sketch.py  to redraw the hand-drawn version.
+       The colours and fonts below are only for looking at this file directly; sketch.py brings
+       its own. The five sources share the style block, the markers and the legend.
+
+       -->
+  <style>
+    text   { fill: #1f2328; }
+    .title { font-size: 18px; font-weight: 700; }
+    .name  { font-size: 13px; font-weight: 700; }
+    .note  { fill: #57606a; }
+    .cmos  { fill: #dbeafe; stroke: #1d4ed8; }  /* CMOS logic, single-ended 0 / 0.7 V */
+    .cml   { fill: #ffedd5; stroke: #c2410c; }  /* CML, differential */
+    .ana   { fill: #dcfce7; stroke: #15803d; }  /* analog */
+    .clk   { fill: #f3e8ff; stroke: #7e22ce; }  /* clock generation */
+    .mix   { fill: url(#cmos2cml); stroke: #57606a; }  /* CMOS on one side, CML on the other */
+    .ext   { fill: #eaeef2; stroke: #6e7781; }  /* not on the chip, or ideal glue */
+    .ph    { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 6 3; }  /* placeholder cell */
+    .box   { fill: #ffffff; stroke: #8c959f; }  /* container: a structural block */
+    .w     { fill: none; stroke: #1f2328; stroke-width: 1.5; }  /* signal */
+    .wd    { fill: none; stroke: #1f2328; stroke-width: 2.5; }  /* main data path */
+    .wc    { fill: none; stroke: #7e22ce; stroke-width: 1.5; }  /* clock */
+    .wb    { fill: none; stroke: #15803d; stroke-width: 1.5; stroke-dasharray: 5 3; }  /* bias current */
+    .mid   { text-anchor: middle; }
+    .end   { text-anchor: end; }
+    .warn  { fill: #b91c1c; }
+    .amp   { fill: #15803d; }  /* a current, drawn to scale */
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#1f2328"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#7e22ce"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="#15803d"/></marker>
+    <linearGradient id="cmos2cml"><stop offset="0.5" stop-color="#dbeafe"/><stop offset="0.5" stop-color="#ffedd5"/></linearGradient>
+  </defs>
+
+    <rect x="0.5" y="0.5" width="999" height="683" rx="8" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="24" y="34" class="title">Biasing: one reference, one wire per consumer</text>
+  <text x="24" y="54" class="note">Every bias starts at bias_ref. Each block gives every consumer its own wire. The numbers are the nominal values.</text>
+
+  <!-- ===== the reference ===== -->
+  <rect class="ana" x="40" y="96" width="150" height="414" rx="4"/>
+  <text x="115" y="122" class="name mid">bias_ref</text>
+  <text x="115" y="142" class="note mid">the one reference</text>
+  <text x="115" y="157" class="note mid">en: bias_en</text>
+  <text x="115" y="172" class="note mid">supply: vddo</text>
+
+  <text x="200" y="142"><tspan class="name">vref</tspan><tspan dx="8">0.6 V</tspan></text>
+  <path class="w" marker-end="url(#a)" d="M190,150 H300"/>
+  <text x="200" y="292"><tspan class="name">iref_rx</tspan></text>
+  <text x="200" y="322" class="note">100 µA</text>
+  <path class="wb" marker-end="url(#ab)" d="M190,300 H300"/>
+  <text x="200" y="457"><tspan class="name">iref_clk</tspan></text>
+  <text x="200" y="487" class="note">100 µA</text>
+  <path class="wb" marker-end="url(#ab)" d="M190,465 H300"/>
+
+  <!-- ===== transmitter ===== -->
+  <rect class="ana" x="300" y="96" width="150" height="108" rx="4"/>
+  <text x="375" y="122" class="name mid">tx_bias</text>
+  <text x="375" y="142" class="note mid">en: tx_en</text>
+  <text x="375" y="157" class="note mid">supply: vddo</text>
+  <text x="375" y="172" class="note mid">gives tx_pgood</text>
+
+  <text x="462" y="112">six tail currents, 16 mA in total</text>
+  <path class="wb" marker-end="url(#ab)" d="M450,120 H780"/>
+  <rect class="ana" x="780" y="96" width="190" height="48" rx="4"/>
+  <text x="875" y="117" class="name mid">pam4_driver</text>
+  <text x="875" y="134" class="note mid">swing, 2:1, FFE weights</text>
+
+  <text x="456" y="172" class="name">i_pdrv</text>
+  <text x="456" y="198" class="note">6 mA</text>
+  <path class="wb" marker-end="url(#ab)" d="M450,182 H530"/>
+  <rect class="ana" x="530" y="160" width="160" height="44" rx="4"/>
+  <text x="610" y="178" class="name mid">tx_predrv_bias</text>
+  <text x="610" y="195" class="note mid">1 in, 6 out</text>
+  <text x="698" y="174" class="note">6 x 100 µA</text>
+  <path class="wb" marker-end="url(#ab)" d="M690,182 H780"/>
+  <rect class="ana" x="780" y="160" width="190" height="44" rx="4"/>
+  <text x="875" y="178" class="name mid">predriver_cml x6</text>
+  <text x="875" y="195" class="note mid">swing follows its bias</text>
+
+  <!-- ===== receiver ===== -->
+  <rect class="ana" x="300" y="250" width="150" height="142" rx="4"/>
+  <text x="375" y="276" class="name mid">rx_bias</text>
+  <text x="375" y="296" class="note mid">en: rx_en</text>
+  <text x="375" y="311" class="note mid">supply: vdd</text>
+
+  <text x="462" y="262"><tspan class="name">vtt</tspan><tspan dx="8">0.55 V</tspan></text>
+  <path class="w" marker-end="url(#a)" d="M450,270 H780"/>
+  <rect class="ana" x="780" y="252" width="190" height="36" rx="4"/>
+  <text x="875" y="275" class="mid"><tspan class="name">rx_term</tspan><tspan class="note" dx="8">termination</tspan></text>
+
+  <text x="462" y="306"><tspan class="name">vctrl</tspan><tspan dx="8">0.35 V</tspan></text>
+  <path class="w" marker-end="url(#a)" d="M450,314 H780"/>
+  <rect class="ana" x="780" y="296" width="190" height="36" rx="4"/>
+  <text x="875" y="319" class="mid"><tspan class="name">vga</tspan><tspan class="note" dx="8">gain control</tspan></text>
+
+  <text x="462" y="358">38 x 100 µA, one per cell</text>
+  <path class="wb" marker-end="url(#ab)" d="M450,366 H780"/>
+  <rect class="ph" x="780" y="340" width="190" height="52" rx="4" fill="#ffffff"/>
+  <text x="875" y="361" class="mid">ctle, vga, slicer x24,</text>
+  <text x="875" y="378" class="mid">demux2_cml x12</text>
+
+  <!-- ===== clocking ===== -->
+  <rect class="ana" x="300" y="420" width="150" height="90" rx="4"/>
+  <text x="375" y="446" class="name mid">clk_bias</text>
+  <text x="375" y="466" class="note mid">en: bias_en</text>
+  <text x="375" y="481" class="note mid">supply: vdd</text>
+
+  <text x="462" y="457">12 x 100 µA, one per cell</text>
+  <path class="wb" marker-end="url(#ab)" d="M450,465 H780"/>
+  <rect class="ph" x="780" y="428" width="190" height="74" rx="4" fill="#ffffff"/>
+  <text x="875" y="449" class="mid">charge_pump x2, vco x2,</text>
+  <text x="875" y="466" class="mid">cdr_pd_linear, dcc_cml x2,</text>
+  <text x="875" y="483" class="mid">clkbuf_cml x2, div2_cml x3</text>
+
+  <!-- ===== slicer references ===== -->
+  <rect class="ana" x="300" y="540" width="150" height="44" rx="4"/>
+  <text x="375" y="558" class="name mid">threshold_dac x24</text>
+  <text x="375" y="575" class="note mid">6 bits each</text>
+  <text x="462" y="554">24 references, nearest of 64 codes</text>
+  <path class="w" marker-end="url(#a)" d="M450,562 H780"/>
+  <rect class="ana" x="780" y="540" width="190" height="44" rx="4"/>
+  <text x="875" y="558" class="name mid">slicer x24</text>
+  <text x="875" y="575" class="note mid">reference input</text>
+
+  <text x="40" y="612" class="note">Dashed red: the cell has no bias pin yet. Its reference current is generated and ends at the top level.</text>
+
+  <!-- ===== legend ===== -->
+  <g transform="translate(24,634)">
+    <rect class="cmos" width="14" height="14" rx="2"/><text x="24" y="11">CMOS logic, 0 / 0.7 V</text>
+    <rect class="cml" x="187" width="14" height="14" rx="2"/><text x="211" y="11">CML, differential 0.6 Vpp</text>
+    <rect class="ana" x="403" width="14" height="14" rx="2"/><text x="427" y="11">analog</text>
+    <rect class="clk" x="482" width="14" height="14" rx="2"/><text x="506" y="11">clocking</text>
+    <rect class="ph" x="576" width="14" height="14" rx="2" fill="#ffffff"/><text x="600" y="11">placeholder, ideal</text>
+    <rect class="ext" x="742" width="14" height="14" rx="2"/><text x="766" y="11">off chip / ideal glue</text>
+    <path class="w" marker-end="url(#a)" d="M0,31 H26"/><text x="38" y="35">signal</text>
+    <path class="wc" marker-end="url(#ac)" d="M94,31 H120"/><text x="132" y="35">clock</text>
+    <path class="wb" marker-end="url(#ab)" d="M180,31 H206"/><text x="218" y="35">bias current</text>
+    <rect class="mix" x="316" y="24" width="14" height="14" rx="2"/><text x="340" y="35">CMOS on one side, CML on the other</text>
+  </g>
+</svg>

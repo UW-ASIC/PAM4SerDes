@@ -1,0 +1,84 @@
+// bias_ref : reference generator
+// Owner    : Omar ElSawy
+//
+// Makes the one reference every bias block starts from and hands each bias block its
+// own copy (one bias wire, one consumer):
+//   vref      0.6 V reference voltage, to tx_bias
+//   iref_rx   reference current, to rx_bias
+//   iref_clk  reference current, to clk_bias
+//
+// Real circuit: a bandgap or constant-gm reference with a start-up circuit and mirrors.
+// Modelled: the nominal values, a smooth enable and supply-low gate, a start-up time
+// constant, finite supply rejection, the supply current.
+// Not modelled: temperature, noise, mismatch between the copies.
+//
+// The current outputs are sources from vdd (PMOS mirror outputs): current flows out of
+// the pin into the consumer's diode-connected input. Each has a compliance knee, vdsat
+// below vdd, and an output resistance.
+
+`ifndef PAM4_BIAS_REF_VA
+`define PAM4_BIAS_REF_VA
+
+`include "disciplines.vams"
+
+module bias_ref(vdd, vss, en, vref, iref_rx, iref_clk);
+  inout vdd, vss;
+  input en;
+  output vref, iref_rx, iref_clk;
+  electrical vdd, vss, en, vref, iref_rx, iref_clk;
+  electrical st; // start-up state: 0 off, 1 settled
+
+  (* desc = "reference voltage", units = "V" *)
+  parameter real vref_nom = 0.6 from (0:inf);
+  (* desc = "reference current of each copy", units = "A" *)
+  parameter real iref_nom = 100u from (0:inf);
+  (* desc = "supply the reference is specified at", units = "V" *)
+  parameter real vdd_nom = 1.25 from (0:inf);
+  (* desc = "lowest supply for a full output", units = "V" *)
+  parameter real vdd_min = 1.0 from (0:inf);
+  (* desc = "width of the supply-low transition", units = "V" *)
+  parameter real vdd_w = 0.03 from (0:inf);
+  (* desc = "enable threshold", units = "V" *)
+  parameter real ven_th = 0.6;
+  (* desc = "width of the enable transition", units = "V" *)
+  parameter real ven_w = 0.02 from (0:inf);
+  (* desc = "start-up time constant", units = "s" *)
+  parameter real t_start = 1n from (0:inf);
+  (* desc = "supply rejection of the reference", units = "dB" *)
+  parameter real psrr_db = 40 from (0:inf);
+  (* desc = "output resistance of the vref buffer", units = "Ohm" *)
+  parameter real rout_v = 100 from (0:inf);
+  (* desc = "compliance knee of the current outputs, below vdd", units = "V" *)
+  parameter real vdsat = 0.15 from (0:inf);
+  (* desc = "output resistance of each current output", units = "Ohm" *)
+  parameter real rout_i = 1e6 from (0:inf);
+  (* desc = "supply current of the reference core", units = "A" *)
+  parameter real idd = 50u from [0:inf);
+
+  real vsup, on, line;
+
+  analog begin
+    vsup = V(vdd, vss);
+
+    // start-up state: enable and supply-low through smooth gates, then a first-order settle
+    I(st, vss) <+ V(st, vss) - 0.25 * (1.0 + tanh((V(en, vss) - ven_th) / ven_w))
+                                    * (1.0 + tanh((vsup - vdd_min) / vdd_w));
+    I(st, vss) <+ t_start * ddt(V(st, vss));
+    on = V(st, vss);
+
+    // finite supply rejection
+    line = 1.0 + (vsup - vdd_nom) / vdd_nom * pow(10.0, -psrr_db / 20.0);
+
+    // the reference voltage, through its buffer's output resistance
+    I(vref, vss) <+ (V(vref, vss) - on * line * vref_nom) / rout_v;
+
+    // one current copy per consumer
+    I(vdd, iref_rx)  <+ on * line * iref_nom * tanh(V(vdd, iref_rx) / vdsat) + V(vdd, iref_rx) / rout_i;
+    I(vdd, iref_clk) <+ on * line * iref_nom * tanh(V(vdd, iref_clk) / vdsat) + V(vdd, iref_clk) / rout_i;
+
+    // the core's own supply current
+    I(vdd, vss) <+ on * idd;
+  end
+endmodule
+
+`endif

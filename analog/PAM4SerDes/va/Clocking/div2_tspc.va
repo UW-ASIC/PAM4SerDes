@@ -1,3 +1,6 @@
+`ifndef PAM4_DIV2_TSPC_VA
+`define PAM4_DIV2_TSPC_VA
+
 // Divide-by-2 in true single-phase clock (TSPC) logic. Goes to clock trees for
 // the mux/demux trees. Converts 7 Ghz to 3.5, 1.75 and 0.875 GHz
 
@@ -100,9 +103,10 @@ module div2_tspc(clk, rst, q, qb, vdd, vss);
       end
     end
 
-    // Breakpoints
-    @(timer(t50 - 0.5 * trf)) ;
-    @(timer(t50 + 0.5 * trf)) ;
+    // A step bound keeps the output edge resolved. It replaces two timer() breakpoints on
+    // the edge's corners: ngspice stops with "timestep too small" when two cells ask for
+    // time points closer together than its minimum step (see CHANGELOGS.md).
+    $bound_step(0.25 * trf);
 
     @(final_step) begin
       if (n_fast > 0 || n_slow > 0)
@@ -122,3 +126,5 @@ module div2_tspc(clk, rst, q, qb, vdd, vss);
     end
   end
 endmodule
+
+`endif

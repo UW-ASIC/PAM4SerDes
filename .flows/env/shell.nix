@@ -122,6 +122,8 @@ pkgs.mkShell {
     if [ "${type}" = "analog" ] || [ "${type}" = "mixed" ]; then
       echo "  - xschem: $(xschem --version 2>/dev/null | head -n 1 || echo 'custom build')"
       echo "  - magic: $(magic --version 2>/dev/null || echo 'from nixpkgs')"
+      echo "  - ngspice: $(ngspice --version 2>/dev/null | grep -oE 'ngspice-[0-9.]+' | head -n 1 || echo 'not found')"
+      echo "  - vera: $(vera --version 2>/dev/null | head -n 1 || echo 'not found')"
       echo "  - cktimg-json: $(command -v cktimg-json >/dev/null && echo ok || echo 'not found')"
       echo "  - spicerack: $(python -c 'import spicerack' 2>/dev/null && echo ok || echo 'not found')"
     fi

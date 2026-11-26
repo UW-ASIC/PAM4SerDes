@@ -1,0 +1,108 @@
+// 56 Gb/s PAM4 SerDes, top level: transmitter and receiver with their clocking.
+// Structural block, wires the sub-blocks together and adds no behaviour of its own.
+// The channel is not part of it: txp / txn and rx_p / rx_n are pads, and a testbench
+// connects them (test/tb_datapath.sp does, for tx_top and rx_top on ideal clocks).
+//
+//   refclk_tx -> refclk_buf -> tx_pll (437.5 MHz x 32 = 14 GHz) -> tx_top -> txp / txn
+//   rx_p / rx_n -> rx_top -> rxd_m / rxd_l (2 x 32 bits per rx_wclk cycle)
+//   refclk_rx -> refclk_buf -> rx_cdr (FLL against the reference, then tracks the data
+//                                      at rx_top's AFE output) -> rx_top's clock tree
+//
+// Biasing: bias_ref makes the reference and hands one copy each to tx_bias (inside
+// tx_top), rx_bias and clk_bias. rx_bias makes the receiver's termination reference and
+// VGA gain-control voltage. The reference currents rx_bias and clk_bias make for cells
+// that have no bias pin yet (CTLE, VGA, slicers, CML demultiplexers, every clocking
+// cell) are left unconnected here until those cells have one.
+//
+// Supplies: vdd 0.7 V core, vddo 1.25 V transmitter output stage and reference.
+// Enables: bias_en (reference and clocking bias), tx_en (transmitter bias), rx_en
+// (receiver bias). Logic pins are 0.7 V CMOS except bias_en, tx_en and tx_pgood, which
+// are 1.25 V.
+// rst is active high. force_lock high skips the receiver's frequency acquisition.
+// See rx_top.va for the order and coding of the received words.
+
+`ifndef PAM4_SERDES_VA
+`define PAM4_SERDES_VA
+
+`include "disciplines.vams"
+`include "Biasing/bias_ref.va"
+`include "Biasing/rx_bias.va"
+`include "Biasing/clk_bias.va"
+`include "Clocking/refclk_buf.va"
+`include "Clocking/tx_pll.va"
+`include "Clocking/rx_cdr.va"
+`include "Transmitter/tx_top.va"
+`include "Receiver/rx_top.va"
+
+module pam4_serdes(refclk_tx_p, refclk_tx_n, refclk_rx_p, refclk_rx_n, rst,
+                   bias_en, tx_en, rx_en, txp, txn, tx_lock, tx_pgood,
+                   rx_p, rx_n, force_lock, rxd_m, rxd_l, rx_wclk, rx_lock,
+                   vdd, vddo, vss);
+  input refclk_tx_p, refclk_tx_n, refclk_rx_p, refclk_rx_n, rst;
+  input bias_en, tx_en, rx_en;
+  output txp, txn, tx_lock, tx_pgood;
+  inout rx_p, rx_n;
+  input force_lock;
+  output [0:31] rxd_m, rxd_l;
+  output rx_wclk, rx_lock;
+  inout vdd, vddo, vss;
+  electrical refclk_tx_p, refclk_tx_n, refclk_rx_p, refclk_rx_n, rst;
+  electrical bias_en, tx_en, rx_en, txp, txn, tx_lock, tx_pgood;
+  electrical rx_p, rx_n, force_lock, rx_wclk, rx_lock, vdd, vddo, vss;
+  electrical [0:31] rxd_m, rxd_l;
+
+  electrical ckref_tx, ck_tx, ckfb_tx, vctl_tx;
+  electrical ckref_rx, ck_rx, ckfb_rx, vctl_rx;
+  electrical afe_p, afe_n, rx_clk14_p, rx_clk14_n;
+  electrical vref, iref_rx, iref_clk, vtt, vctrl; // bias wires, one per consumer
+  // reference currents waiting for a bias pin on their cell
+  electrical ib_ctle, ib_vga;
+  electrical [23:0] ib_slicer;
+  electrical [11:0] ib_demux;
+  electrical ib_cp_tx, ib_cp_rx, ib_pd_rx, ib_vco_tx, ib_vco_rx;
+  electrical ib_dcc_tx, ib_dcc_rx, ib_buf_tx, ib_buf_rx, ib_div_tx;
+  electrical [1:0] ib_div_rx;
+
+  (* desc = "FFE pre-cursor weight, magnitude (applied negative)" *)
+  parameter real w_pre = 0.05 from [0:1];
+  (* desc = "FFE main-cursor weight" *)
+  parameter real w_main = 0.80 from [0:1];
+  (* desc = "FFE post-cursor weight, magnitude (applied negative)" *)
+  parameter real w_post = 0.15 from [0:1];
+  (* desc = "CTLE main peaking boost (asymptotic HF/DC)", units = "dB" *)
+  parameter real main_boost_db = 0.0 from [0:30];
+  (* desc = "DFE tap: first post-cursor / main cursor" *)
+  parameter real alpha = 0.08548;
+  (* desc = "scale of the added jitter of the clocking team's cells: 1 = defaults, 0 = none" *)
+  parameter real rj_scale = 1 from [0:10];
+
+  // Biasing
+  bias_ref u_ref(.vdd(vddo), .vss(vss), .en(bias_en), .vref(vref), .iref_rx(iref_rx), .iref_clk(iref_clk));
+  rx_bias u_rxb(.vdd(vdd), .vss(vss), .en(rx_en), .iref(iref_rx), .vtt(vtt), .vctrl(vctrl),
+    .ib_ctle(ib_ctle), .ib_vga(ib_vga), .ib_slicer(ib_slicer), .ib_demux(ib_demux));
+  clk_bias u_ckb(.vdd(vdd), .vss(vss), .en(bias_en), .iref(iref_clk),
+    .ib_cp_tx(ib_cp_tx), .ib_cp_rx(ib_cp_rx), .ib_pd_rx(ib_pd_rx), .ib_vco_tx(ib_vco_tx), .ib_vco_rx(ib_vco_rx),
+    .ib_dcc_tx(ib_dcc_tx), .ib_dcc_rx(ib_dcc_rx), .ib_buf_tx(ib_buf_tx), .ib_buf_rx(ib_buf_rx),
+    .ib_div_tx(ib_div_tx), .ib_div_rx(ib_div_rx));
+
+  // Transmitter
+  refclk_buf #(.rj(100f * rj_scale), .rj_seed(1)) u_ref_tx(.ckin_p(refclk_tx_p), .ckin_n(refclk_tx_n), .ckref(ckref_tx), .vdd(vdd), .vss(vss));
+  tx_pll #(.rj_div(150f * rj_scale)) u_pll(.ckref(ckref_tx), .ck(ck_tx), .ckfb(ckfb_tx), .lock(tx_lock), .vctl(vctl_tx), .vdd(vdd), .vss(vss));
+  tx_top #(.w_pre(w_pre), .w_main(w_main), .w_post(w_post), .rj_scale(rj_scale)) u_tx(.ckin(ck_tx), .rst(rst), .en(tx_en), .vref(vref),
+    .txp(txp), .txn(txn), .pgood(tx_pgood), .vdd(vdd), .vddo(vddo), .vss(vss));
+
+  // Receiver
+  refclk_buf #(.rj(100f * rj_scale), .rj_seed(11)) u_ref_rx(.ckin_p(refclk_rx_p), .ckin_n(refclk_rx_n), .ckref(ckref_rx), .vdd(vdd), .vss(vss));
+  // tq: rx_cdr makes the phase detector's quadrature clock by delaying clk14. With its
+  // default, a quarter period (17.857 ps), the loop settles with the clock edges on the
+  // data transitions. Three quarters of a period (the quadrature clock a quarter period
+  // early) makes it settle half a symbol away, at the detector's intended lock point, in
+  // the middle of the eye. See CHANGELOGS.md, "Clock recovery".
+  rx_cdr #(.rj_div(150f * rj_scale), .tq(53.571p)) u_cdr(.ckref(ckref_rx), .din_p(afe_p), .din_n(afe_n), .clk14_p(rx_clk14_p), .clk14_n(rx_clk14_n),
+    .force_lock(force_lock), .ck(ck_rx), .ckfb(ckfb_rx), .lock(rx_lock), .vctl(vctl_rx), .vdd(vdd), .vss(vss));
+  rx_top #(.main_boost_db(main_boost_db), .alpha(alpha), .rj_scale(rj_scale)) u_rx(.rx_p(rx_p), .rx_n(rx_n), .vtt(vtt), .vctrl(vctrl), .ckin(ck_rx), .rst(rst),
+    .afe_p(afe_p), .afe_n(afe_n), .clk14_p(rx_clk14_p), .clk14_n(rx_clk14_n),
+    .rxd_m(rxd_m), .rxd_l(rxd_l), .clk0p875(rx_wclk), .vdd(vdd), .vss(vss));
+endmodule
+
+`endif

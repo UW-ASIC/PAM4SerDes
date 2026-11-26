@@ -53,8 +53,14 @@ module capacitor(in1, ou1);
   electrical in1, ou1;
   inout in1, ou1;
   parameter real c = 1p from (0:inf);
+  parameter real v0 = 0; //voltage at the DC operating point, where the transient starts
   analog begin
-    I(in1, ou1) <+ c*ddt(V(in1, ou1));
+    //a capacitor fed only by a current source has no DC solution: the operating point
+    //holds it at v0 (0 V, what running with `uic` gave) and the transient integrates from there
+    if (analysis("static"))
+      V(in1, ou1) <+ v0;
+    else
+      I(in1, ou1) <+ c*ddt(V(in1, ou1));
   end
 endmodule
 

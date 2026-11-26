@@ -1,3 +1,6 @@
+`ifndef PAM4_DCC_CML_VA
+`define PAM4_DCC_CML_VA
+
 `include "constants.vams"
 `include "disciplines.vams"
 
@@ -87,3 +90,5 @@ module dcc_cml(clk_in, clk_outp, clk_outn, vss);
     end
 
 endmodule
+
+`endif

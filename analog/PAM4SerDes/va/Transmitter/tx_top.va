@@ -1,0 +1,110 @@
+// Complete transmitter. Structural block, wires the cells together and adds no
+// behaviour of its own.
+//
+// ckin (single-ended CMOS 14 GHz, from tx_pll) -> tx_clkgen -> clock tree
+// prbs_gray_src (word clock clk0p875) -> 2 x tx_ser_ffe_path (MSB and LSB paths)
+//   -> 6 x predriver_cml (one per path and FFE tap) -> pam4_driver -> txp / txn
+// tx_bias sinks the six driver tail currents, which set the swing, the 2:1 MSB:LSB
+// weighting and the FFE tap weights.
+//
+// prbs_gray_src puts symbol s (s = 0 is sent first) on gray_out[63 - 2s] (MSB) and
+// gray_out[62 - 2s] (LSB). The serializer wants time slot j on d[j], so each path gets
+// every other wire of gray_out, highest index on d[0].
+//
+// The phase_aligner in tx_clkgen locks to the MSB path's retimed 7 Gb/s lane 0. It
+// reads a single-ended signal around 0 V, so that lane goes through an ideal diff2se. The LSB path's copy of that lane is left unconnected.
+//
+// vddo is the 1.25 V output-stage supply (tx_bias, driver); vdd is the 0.7 V core.
+// en and vref are tx_bias's enable (high = on, 1.25 V logic) and its 0.6 V reference.
+// tx_bias sinks one current for all six pre-drivers (i_pdrv). tx_predrv_bias turns it
+// into six reference currents, one wire per predriver_cml, and each pre-driver's swing
+// follows the current it receives.
+
+`ifndef PAM4_TX_TOP_VA
+`define PAM4_TX_TOP_VA
+
+`include "disciplines.vams"
+`include "../Clocking/tx_clkgen.va"
+`include "../Clocking/diff2se.va"
+`include "prbs_gray_src.va"
+`include "tx_ser_ffe_path.va"
+`include "predriver_cml.va"
+`include "pam4_driver.va"
+`include "tx_bias.va"
+`include "../Biasing/tx_predrv_bias.va"
+
+module tx_top(ckin, rst, en, vref, txp, txn, pgood, vdd, vddo, vss);
+  input ckin, rst, en, vref;
+  output txp, txn, pgood;
+  inout vdd, vddo, vss;
+  electrical ckin, rst, en, vref, txp, txn, pgood, vdd, vddo, vss;
+
+  electrical clk14_p, clk14_n, clk7_p, clk7_n, clk3p5, clk3p5b, clk1p75, clk0p875;
+  electrical [63:0] g;                         // PRBS word, Gray coded
+  electrical pa_p, pa_n, pa_data, pa_l_p, pa_l_n;
+  electrical m_pre_p, m_pre_n, m_main_p, m_main_n, m_post_p, m_post_n;       // MSB path taps
+  electrical l_pre_p, l_pre_n, l_main_p, l_main_n, l_post_p, l_post_n;       // LSB path taps
+  electrical dm_pre_p, dm_pre_n, dm_main_p, dm_main_n, dm_post_p, dm_post_n; // after the pre-drivers
+  electrical dl_pre_p, dl_pre_n, dl_main_p, dl_main_n, dl_post_p, dl_post_n;
+  electrical i_msb_pre, i_msb_main, i_msb_post, i_lsb_pre, i_lsb_main, i_lsb_post, i_pdrv;
+  electrical [5:0] ib_pd;                      // one bias wire per pre-driver
+
+  (* desc = "FFE pre-cursor weight, magnitude (applied negative)" *)
+  parameter real w_pre = 0.05 from [0:1];
+  (* desc = "FFE main-cursor weight" *)
+  parameter real w_main = 0.80 from [0:1];
+  (* desc = "FFE post-cursor weight, magnitude (applied negative)" *)
+  parameter real w_post = 0.15 from [0:1];
+  (* desc = "scale of the added jitter of the clocking team's cells: 1 = defaults, 0 = none" *)
+  parameter real rj_scale = 1 from [0:10];
+
+  tx_clkgen #(.rj_scale(rj_scale)) u_cg(.ckin(ckin), .rst(rst), .pa_data(pa_data),
+    .clk14_p(clk14_p), .clk14_n(clk14_n), .clk7_p(clk7_p), .clk7_n(clk7_n),
+    .clk3p5(clk3p5), .clk3p5b(clk3p5b), .clk1p75(clk1p75), .clk0p875(clk0p875), .vdd(vdd), .vss(vss));
+  diff2se u_pa(.p(pa_p), .n(pa_n), .out(pa_data), .vss(vss));
+
+  prbs_gray_src u_prbs(.clk(clk0p875), .reset(rst), .gray_out(g));
+
+  // MSB path: the odd wires of g
+  tx_ser_ffe_path #(.rj_scale(rj_scale)) u_path_m(
+    .d({g[1], g[3], g[5], g[7], g[9], g[11], g[13], g[15], g[17], g[19], g[21], g[23], g[25], g[27], g[29], g[31],
+        g[33], g[35], g[37], g[39], g[41], g[43], g[45], g[47], g[49], g[51], g[53], g[55], g[57], g[59], g[61], g[63]}),
+    .clk0p875(clk0p875), .clk1p75(clk1p75), .clk3p5(clk3p5), .clk3p5b(clk3p5b),
+    .clk7_p(clk7_p), .clk7_n(clk7_n), .clk14_p(clk14_p), .clk14_n(clk14_n), .rst(rst),
+    .pre_p(m_pre_p), .pre_n(m_pre_n), .main_p(m_main_p), .main_n(m_main_n),
+    .post_p(m_post_p), .post_n(m_post_n), .pa_p(pa_p), .pa_n(pa_n), .vdd(vdd), .vss(vss));
+  // LSB path: the even wires of g
+  tx_ser_ffe_path #(.rj_scale(rj_scale)) u_path_l(
+    .d({g[0], g[2], g[4], g[6], g[8], g[10], g[12], g[14], g[16], g[18], g[20], g[22], g[24], g[26], g[28], g[30],
+        g[32], g[34], g[36], g[38], g[40], g[42], g[44], g[46], g[48], g[50], g[52], g[54], g[56], g[58], g[60], g[62]}),
+    .clk0p875(clk0p875), .clk1p75(clk1p75), .clk3p5(clk3p5), .clk3p5b(clk3p5b),
+    .clk7_p(clk7_p), .clk7_n(clk7_n), .clk14_p(clk14_p), .clk14_n(clk14_n), .rst(rst),
+    .pre_p(l_pre_p), .pre_n(l_pre_n), .main_p(l_main_p), .main_n(l_main_n),
+    .post_p(l_post_p), .post_n(l_post_n), .pa_p(pa_l_p), .pa_n(pa_l_n), .vdd(vdd), .vss(vss));
+
+  predriver_cml u_pd_m_pre(.inp(m_pre_p), .inn(m_pre_n), .outp(dm_pre_p), .outn(dm_pre_n), .ib(ib_pd[0]), .vss(vss));
+  predriver_cml u_pd_m_main(.inp(m_main_p), .inn(m_main_n), .outp(dm_main_p), .outn(dm_main_n), .ib(ib_pd[1]), .vss(vss));
+  predriver_cml u_pd_m_post(.inp(m_post_p), .inn(m_post_n), .outp(dm_post_p), .outn(dm_post_n), .ib(ib_pd[2]), .vss(vss));
+  predriver_cml u_pd_l_pre(.inp(l_pre_p), .inn(l_pre_n), .outp(dl_pre_p), .outn(dl_pre_n), .ib(ib_pd[3]), .vss(vss));
+  predriver_cml u_pd_l_main(.inp(l_main_p), .inn(l_main_n), .outp(dl_main_p), .outn(dl_main_n), .ib(ib_pd[4]), .vss(vss));
+  predriver_cml u_pd_l_post(.inp(l_post_p), .inn(l_post_n), .outp(dl_post_p), .outn(dl_post_n), .ib(ib_pd[5]), .vss(vss));
+
+  tx_predrv_bias u_pdb(.vdd(vddo), .vss(vss), .isum(i_pdrv), .ib(ib_pd));
+
+  pam4_driver u_drv(
+    .msb_pre_p(dm_pre_p), .msb_pre_n(dm_pre_n), .msb_main_p(dm_main_p), .msb_main_n(dm_main_n),
+    .msb_post_p(dm_post_p), .msb_post_n(dm_post_n),
+    .lsb_pre_p(dl_pre_p), .lsb_pre_n(dl_pre_n), .lsb_main_p(dl_main_p), .lsb_main_n(dl_main_n),
+    .lsb_post_p(dl_post_p), .lsb_post_n(dl_post_n),
+    .i_msb_pre(i_msb_pre), .i_msb_main(i_msb_main), .i_msb_post(i_msb_post),
+    .i_lsb_pre(i_lsb_pre), .i_lsb_main(i_lsb_main), .i_lsb_post(i_lsb_post),
+    .outp(txp), .outn(txn), .vss(vss));
+
+  tx_bias #(.w_pre(w_pre), .w_main(w_main), .w_post(w_post)) u_bias(
+    .vdd(vddo), .vss(vss), .en(en), .vref(vref),
+    .i_msb_pre(i_msb_pre), .i_msb_main(i_msb_main), .i_msb_post(i_msb_post),
+    .i_lsb_pre(i_lsb_pre), .i_lsb_main(i_lsb_main), .i_lsb_post(i_lsb_post),
+    .i_pdrv(i_pdrv), .pgood(pgood));
+endmodule
+
+`endif

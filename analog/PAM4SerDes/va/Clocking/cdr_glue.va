@@ -2,7 +2,7 @@
 // that are not represented as blocks, so they add no non-ideal behaviour.
 //   diff2se: differential to single-ended, V(out, vss) = V(p, n). cdr_pd_linear
 //            reads single-ended signals around 0 V; the AFE data and clk14 are
-//            differential.
+//            differential. Lives in diff2se.va, because tx_top needs it too.
 //   qdelay:  pure delay. cdr_pd_linear needs a quadrature clk14_Q, and Detailed.png
 //            has no quadrature source, so rx_cdr delays clk14 by a quarter period.
 //   nor2:    smooth ideal NOR, exact at 0 / vdd inputs: y = vdd (1 - a)(1 - b).
@@ -11,15 +11,7 @@
 `define PAM4_CDR_GLUE_VA
 
 `include "disciplines.vams"
-
-module diff2se(p, n, out, vss);
-  input p, n;
-  output out;
-  inout vss;
-  electrical p, n, out, vss;
-  analog
-    V(out, vss) <+ V(p, n);
-endmodule
+`include "diff2se.va"
 
 module qdelay(in, out, vss);
   input in;

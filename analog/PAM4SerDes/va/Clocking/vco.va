@@ -1,3 +1,6 @@
+`ifndef PAM4_VCO_VA
+`define PAM4_VCO_VA
+
 // Voltage Controlled Oscillator (VCO) 
 // mathematically:  f_osc = f(V_ctrl)
 // typically:       f_osc = f_0 + K_VCO * V_ctrl
@@ -49,3 +52,5 @@ module vco(v_ctrl, v_out, vdd, gnd);
         $bound_step(0.1/frequency);
     end
 endmodule
+
+`endif

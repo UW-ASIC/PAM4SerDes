@@ -1,0 +1,65 @@
+// tx_predrv_bias : pre-driver bias distribution
+// Owner          : Omar ElSawy
+//
+// tx_bias sinks ONE current for all six pre-drivers (its i_pdrv output). A bias wire
+// can serve one consumer, so this block takes that current and makes six copies, one
+// for each predriver_cml:
+//   isum      bias input, connected to tx_bias.i_pdrv
+//   ib[5:0]   one reference current per pre-driver
+//
+// isum looks like a diode-connected PMOS mirror input, vb_nom / isum_nom ohms to vdd:
+// tx_bias pulls its current through it, which puts the node vb_nom below the supply.
+// Each output is that current divided by ratio. The check prints FAULT when the input
+// current is more than 10 % off.
+//
+// Real circuit: a PMOS mirror with six output legs.
+// Modelled: the ratio, output resistance and compliance. The supply current is the
+// current through the input and the outputs.
+// Not modelled: mismatch between the six copies, noise.
+// No enable pin: the block has no current of its own, and tx_bias already gates isum.
+
+`ifndef PAM4_TX_PREDRV_BIAS_VA
+`define PAM4_TX_PREDRV_BIAS_VA
+
+`include "disciplines.vams"
+
+module tx_predrv_bias(vdd, vss, isum, ib);
+  inout vdd, vss;
+  input isum;
+  output [5:0] ib;
+  electrical vdd, vss, isum;
+  electrical [5:0] ib;
+
+  (* desc = "input current this block expects: six pre-drivers at 1 mA", units = "A" *)
+  parameter real isum_nom = 6m from (0:inf);
+  (* desc = "voltage of the input below vdd at the nominal current", units = "V" *)
+  parameter real vb_nom = 0.65 from (0:inf);
+  (* desc = "input current over each output current" *)
+  parameter real ratio = 60 from (0:inf);
+  (* desc = "compliance knee of the outputs, below vdd", units = "V" *)
+  parameter real vdsat = 0.15 from (0:inf);
+  (* desc = "output resistance of each output", units = "Ohm" *)
+  parameter real rout_i = 1e6 from (0:inf);
+
+  real k, iout;
+  genvar i;
+
+  analog begin
+    // the bias input: a diode-connected mirror input from vdd
+    I(vdd, isum) <+ V(vdd, isum) * isum_nom / vb_nom;
+    k = V(vdd, isum) / vb_nom; // 1 at the nominal input current
+
+    // bias check: the input within 10 % of nominal
+    @(above(abs(k - 1.0) - 0.1))
+      $strobe("tx_predrv_bias: FAULT, input current is %g of nominal at t = %e s", k, $abstime);
+    @(above(0.1 - abs(k - 1.0)))
+      $strobe("tx_predrv_bias: input current valid at t = %e s", $abstime);
+
+    // one copy per pre-driver
+    iout = k * isum_nom / ratio;
+    for (i = 0; i < 6; i = i + 1)
+      I(vdd, ib[i]) <+ iout * tanh(V(vdd, ib[i]) / vdsat) + V(vdd, ib[i]) / rout_i;
+  end
+endmodule
+
+`endif

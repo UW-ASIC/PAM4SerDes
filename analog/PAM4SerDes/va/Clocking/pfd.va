@@ -1,3 +1,6 @@
+`ifndef PAM4_PFD_VA
+`define PAM4_PFD_VA
+
 // ref  -> reference clock
 // fb   -> feedback clock
 // up   -> high while ref is ahead
@@ -53,3 +56,5 @@ module pfd(ref, fb, up, dn, vdd, gnd);
         $bound_step(0.01);
     end
 endmodule
+
+`endif
