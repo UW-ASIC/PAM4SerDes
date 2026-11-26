@@ -287,7 +287,7 @@
     <text x="405" y="259">all 5 clocks</text>
     <text x="676" y="219" class="name mid">tx_bias</text>
     <text x="676" y="236" class="note mid">6 tail currents, 16 mA total</text>
-    <text x="832" y="212">vref<tspan class="note" dx="8">0.6 V</tspan></text>
+    <text x="832" y="212">vref<tspan class="note" dx="8">from bias_ref</tspan></text>
     <text x="832" y="226">tx_en</text>
     <text x="832" y="240">tx_pgood</text>
     <text x="235" y="285" class="name mid">prbs_gray_src</text>
@@ -324,8 +324,8 @@
     <text x="132" y="404" class="end">rxd_m[0:31]</text>
     <text x="132" y="420" class="end">rxd_l[0:31]</text>
     <text x="132" y="436" class="note end">2 x 32 bits</text>
-    <text x="832" y="448">vtt<tspan class="note" dx="8">termination ref.</tspan></text>
-    <text x="832" y="462">vctrl<tspan class="note" dx="8">VGA gain</tspan></text>
+    <text x="832" y="448">vtt<tspan class="note" dx="8">from rx_bias</tspan></text>
+    <text x="832" y="462">vctrl<tspan class="note" dx="8">from rx_bias</tspan></text>
     <text x="316" y="471" class="name mid">rx_clkgen</text>
     <text x="316" y="488" class="note mid">14, 7, 3.5 GHz CML; 1.75, 0.875 CMOS</text>
     <text x="466" y="460">clk14, CML</text>

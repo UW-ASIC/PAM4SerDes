@@ -10,9 +10,9 @@
 
 ## Architecture
 
-`pam4_slicer` is a complete PAM4 slicer for one sampling phase with no equalization: three [slicer](slicer.md)s that share the input and the clock, each with its own [threshold_dac](threshold_dac.md).
+A complete PAM4 slicer for one sampling phase with no equalization: three [slicer](slicer.md)s that share the input and the clock, each with its own [threshold_dac](threshold_dac.md).
 
-**This block is not in the hierarchy.** The receiver uses a DFE, which needs 12 slicers per phase with shifted thresholds, so [rx_decision](rx_decision.md) instantiates 24 slicers directly and lets the DFE model drive their references. `pam4_slicer` remains as the simple case: it is the only place the threshold DAC is used, and it is a way to try the slicer and the DAC together.
+It is not in the hierarchy. The receiver's DFE needs 12 slicers per phase with shifted thresholds, so [rx_decision](rx_decision.md) instantiates 24 slicers and 24 DACs directly. `pam4_slicer` remains as the simple case, a way to try the slicer and the DAC together.
 
 ### Instances
 
@@ -43,8 +43,8 @@ On every falling clock edge the block prints the three decisions as a thermomete
 
 ## Topology research
 
-This block is wiring only, so there is no circuit to choose or size here. The topology research lives in the pages of its cells: [slicer](slicer.md#topology-research), [threshold_dac](threshold_dac.md#topology-research).
+Wiring only. See the cells: [slicer](slicer.md#topology-research), [threshold_dac](threshold_dac.md#topology-research).
 
 ## Sizing research
 
-This block is wiring only, so there is no circuit to choose or size here. The sizing research lives in the pages of its cells: [slicer](slicer.md#sizing-research), [threshold_dac](threshold_dac.md#sizing-research).
+Wiring only. See the cells: [slicer](slicer.md#sizing-research), [threshold_dac](threshold_dac.md#sizing-research).

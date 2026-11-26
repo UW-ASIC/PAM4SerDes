@@ -1,34 +1,47 @@
 # PAM4 SerDes
 
-A 56 Gb/s PAM4 serializer/deserializer (28 GBd, two bits per symbol), built block by block by the UW ASIC student team. The architecture follows Lee et al., JSSC 2015 ("56 Gb/s NRZ/PAM4").
+A 56 Gb/s PAM4 serializer/deserializer (28 GBd, two bits per symbol) by the UW ASIC student team, after Lee et al., JSSC 2015 ("56 Gb/s NRZ/PAM4").
 
-**Where the project is.** Every block has a behavioural Verilog-A model, and the models are wired into one hierarchy that simulates.
+Every block has a behavioural Verilog-A model, and the models are wired into one hierarchy that simulates end to end. **Next: topology research, then sizing research, for every block.** If you own a block, fill in the Topology research section of its page. The tables below take you there.
 
-**What comes next.** Topology research for every block (which circuit implements it), then sizing research (device sizes that meet the block's specs). Each block's owner does that work.
+## Measured specs
 
-If you own a block, your next job is to fill in the **Topology research** section of its page. The table below takes you there.
+Written by CI from the Verilog-A simulations (`make -C analog/PAM4SerDes/build/sim check`). Do not edit this table by hand.
 
-## Where to read (and write) things
-
-Every block has one Markdown page with the same three sections:
-
-| Section of the page | What is in it | Who writes it |
+<!-- specs:begin -->
+| Spec | Value | Measured by |
 |---|---|---|
-| Architecture | What the block does, where it sits, its ports and parameters, and what the present model leaves out | Already written, from the Verilog-A model. Update it when the model changes |
-| Topology research | Requirements, candidate circuits, the chosen one and why, schematic, open questions, references | The block's owner, in this stage. A template is in place |
-| Sizing research | Target specs, sizing method, device table, simulation results, corners, open issues | The block's owner, once the topology is chosen. A template is in place |
+| Transmitter PAM4 levels, differential | -0.399702, -0.133184, 0.133304, 0.399822 V | `tx_driver_test` |
+| Transmitter FFE: peak, de-emphasised level | 0.399822, 0.239809 V | `tx_driver_test` |
+| Transmitter PLL: lock detector asserts after | 669.872 ns | `tb_pll` |
+| Transmitter PLL: control voltage when locked | 0.350313 V | `tb_pll` |
+| Bit errors, transmitter to receiver on ideal clocks | 0 in 17 words of 64 bits | `tb_datapath` |
+| Bit errors with the receiver clock recovered from the data | 0 in 35 words of 64 bits | `tb_cdr` |
+| Clock recovery control voltage, tracking | 0.351985 V | `tb_cdr` |
+| Bit errors, whole top level (PLL, clock recovery, bias blocks, jitter on) | 0 in 22 words of 64 bits | `tb_top` |
+| Transmitter output swing, peak-to-peak differential | 0.799643 V | `tb_top` |
+| Bias: vref, vtt, vctrl as generated | 0.6, 0.5549, 0.353118 V | `tb_top` |
+| Cells in the design | 238 instances of 42 cell types | `architecture.txt` |
+| Ideal placeholders still in use | div2_cml, mux2_cs | `architecture.txt` |
+<!-- specs:end -->
 
-**The Topology research and Sizing research links are where you read the research and also where the owner writes it.** Each link opens a section of `analog/PAM4SerDes/docs/<Section>/<block>.md`. Edit that file and commit it like any other. Keep its three `##` headings unchanged, because this table links to them.
+## Blocks: who owns what, and where to read it
 
-Owners are taken from the git history (the author of the model file; where a lead committed a file for someone else, the real author is shown). **If a name is wrong, correct it** here, in the section overview and on the block's page.
+Every block has one page with three sections: **Architecture** (written, from the model), then **Topology research** and **Sizing research** (templates the owner fills in). The pages are `analog/PAM4SerDes/docs/<Section>/<block>.md`. Keep their three `##` headings, because these tables link to them.
+
+Owners are taken from the git history. If a name is wrong, correct it here, in the section overview and on the block's page.
 
 ### Biasing
 
 Section overview: [Biasing](analog/PAM4SerDes/docs/Biasing/README.md)
 
-| Block | Owner (from git history) | Architecture | Topology research | Sizing research |
+| Block | Owner | Architecture | Topology research | Sizing research |
 |---|---|---|---|---|
+| bias_ref | Omar ElSawy | [read](analog/PAM4SerDes/docs/Biasing/bias_ref.md#architecture) | [read / write](analog/PAM4SerDes/docs/Biasing/bias_ref.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Biasing/bias_ref.md#sizing-research) |
 | tx_bias | Krrish Lala | [read](analog/PAM4SerDes/docs/Biasing/tx_bias.md#architecture) | [read / write](analog/PAM4SerDes/docs/Biasing/tx_bias.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Biasing/tx_bias.md#sizing-research) |
+| tx_predrv_bias | Omar ElSawy | [read](analog/PAM4SerDes/docs/Biasing/tx_predrv_bias.md#architecture) | [read / write](analog/PAM4SerDes/docs/Biasing/tx_predrv_bias.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Biasing/tx_predrv_bias.md#sizing-research) |
+| rx_bias | Omar ElSawy | [read](analog/PAM4SerDes/docs/Biasing/rx_bias.md#architecture) | [read / write](analog/PAM4SerDes/docs/Biasing/rx_bias.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Biasing/rx_bias.md#sizing-research) |
+| clk_bias | Omar ElSawy | [read](analog/PAM4SerDes/docs/Biasing/clk_bias.md#architecture) | [read / write](analog/PAM4SerDes/docs/Biasing/clk_bias.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Biasing/clk_bias.md#sizing-research) |
 
 ### Clocking
 
@@ -66,8 +79,8 @@ Section overview: [Transmitter](analog/PAM4SerDes/docs/Transmitter/README.md)
 
 | Block | Owner (from git history) | Architecture | Topology research | Sizing research |
 |---|---|---|---|---|
-| tx_top | Omar El-Sawy (integration) | [read](analog/PAM4SerDes/docs/Transmitter/tx_top.md#architecture) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_top.md#topology-research) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_top.md#sizing-research) |
-| tx_ser_ffe_path | Omar El-Sawy (integration) | [read](analog/PAM4SerDes/docs/Transmitter/tx_ser_ffe_path.md#architecture) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_ser_ffe_path.md#topology-research) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_ser_ffe_path.md#sizing-research) |
+| tx_top | Omar ElSawy (integration) | [read](analog/PAM4SerDes/docs/Transmitter/tx_top.md#architecture) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_top.md#topology-research) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_top.md#sizing-research) |
+| tx_ser_ffe_path | Omar ElSawy (integration) | [read](analog/PAM4SerDes/docs/Transmitter/tx_ser_ffe_path.md#architecture) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_ser_ffe_path.md#topology-research) | [see its cells](analog/PAM4SerDes/docs/Transmitter/tx_ser_ffe_path.md#sizing-research) |
 | prbs_gray_src | oDNA | [read](analog/PAM4SerDes/docs/Transmitter/prbs_gray_src.md#architecture) | [read / write](analog/PAM4SerDes/docs/Transmitter/prbs_gray_src.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Transmitter/prbs_gray_src.md#sizing-research) |
 | mux2_cmos | oDNA | [read](analog/PAM4SerDes/docs/Transmitter/mux2_cmos.md#architecture) | [read / write](analog/PAM4SerDes/docs/Transmitter/mux2_cmos.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Transmitter/mux2_cmos.md#sizing-research) |
 | mux2_cs | none yet | [read](analog/PAM4SerDes/docs/Transmitter/mux2_cs.md#architecture) | [read / write](analog/PAM4SerDes/docs/Transmitter/mux2_cs.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Transmitter/mux2_cs.md#sizing-research) |
@@ -82,7 +95,7 @@ Section overview: [Receiver](analog/PAM4SerDes/docs/Receiver/README.md)
 
 | Block | Owner (from git history) | Architecture | Topology research | Sizing research |
 |---|---|---|---|---|
-| rx_top | Omar El-Sawy (integration) | [read](analog/PAM4SerDes/docs/Receiver/rx_top.md#architecture) | [see its cells](analog/PAM4SerDes/docs/Receiver/rx_top.md#topology-research) | [see its cells](analog/PAM4SerDes/docs/Receiver/rx_top.md#sizing-research) |
+| rx_top | Omar ElSawy (integration) | [read](analog/PAM4SerDes/docs/Receiver/rx_top.md#architecture) | [see its cells](analog/PAM4SerDes/docs/Receiver/rx_top.md#topology-research) | [see its cells](analog/PAM4SerDes/docs/Receiver/rx_top.md#sizing-research) |
 | rx_afe | Ethan Sun (sunezh) | [read](analog/PAM4SerDes/docs/Receiver/rx_afe.md#architecture) | [see its cells](analog/PAM4SerDes/docs/Receiver/rx_afe.md#topology-research) | [see its cells](analog/PAM4SerDes/docs/Receiver/rx_afe.md#sizing-research) |
 | rx_term | Mehak Khan | [read](analog/PAM4SerDes/docs/Receiver/rx_term.md#architecture) | [read / write](analog/PAM4SerDes/docs/Receiver/rx_term.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Receiver/rx_term.md#sizing-research) |
 | ctle | Kayhan Baig | [read](analog/PAM4SerDes/docs/Receiver/ctle.md#architecture) | [read / write](analog/PAM4SerDes/docs/Receiver/ctle.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Receiver/ctle.md#sizing-research) |
@@ -98,86 +111,79 @@ Section overview: [Receiver](analog/PAM4SerDes/docs/Receiver/README.md)
 | demux2_cml | deaconsham | [read](analog/PAM4SerDes/docs/Receiver/demux2_cml.md#architecture) | [read / write](analog/PAM4SerDes/docs/Receiver/demux2_cml.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Receiver/demux2_cml.md#sizing-research) |
 | demux2_cmos | deaconsham | [read](analog/PAM4SerDes/docs/Receiver/demux2_cmos.md#architecture) | [read / write](analog/PAM4SerDes/docs/Receiver/demux2_cmos.md#topology-research) | [read / write](analog/PAM4SerDes/docs/Receiver/demux2_cmos.md#sizing-research) |
 
-Things to know before you start:
+Notes:
 
-- **`div2_cml` and `mux2_cs` are ideal placeholders with no owner.** Someone needs to take each one.
+- `div2_cml` and `mux2_cs` are ideal placeholders with no owner. Someone needs to take each one.
 - `charge_pump` and the glue cells (`qdelay`, `nor2`, `diff2se`) are ideal on purpose. Their pages say what has to be settled first.
-- `threshold_dac` and `pam4_slicer` have models but are not instantiated in the hierarchy yet.
-- Structural blocks (`tx_pll`, `tx_top`, `rx_top` and the like) are wiring only. Their Topology and Sizing sections point to the pages of their cells.
+- `pam4_slicer` has a model but is not placed in the hierarchy.
+- Structural blocks (`tx_pll`, `tx_top`, `rx_top` and the like) are wiring only. Their research sections point to the pages of their cells.
 
 ## Architecture at a glance
 
 ![Top level: transmitter, receiver and their clocking](analog/PAM4SerDes/docs/img/top.svg)
 
-- **Transmitter.** A PLL multiplies a 437.5 MHz reference by 32 to 14 GHz. A PRBS7 source makes 32 Gray-coded symbols per word. Two identical paths, one for the MSB and one for the LSB of each symbol, serialize 32:1 and make three FFE taps at half rate. The driver sums the six taps into a PAM4 signal of 0.8 V peak-to-peak differential.
-- **Receiver.** A termination, a CTLE and a VGA condition the signal. Twenty-four slicers and a one-tap unrolled DFE decide each symbol, on two phases of the 14 GHz clock. Decoders, retimers and two 1:32 deserializers turn the decisions into two 32-bit words per 0.875 GHz word clock.
-- **Clocking.** The receiver has its own loop: it first locks to a reference, then a linear phase detector tracks the data. Each side has a clock tree that divides 14 GHz down to 0.875 GHz.
-- **Biasing.** One block, `tx_bias`, sets the driver's currents. The rest of the bias network is not designed yet.
+- **Transmitter.** A PLL multiplies a 437.5 MHz reference by 32 to 14 GHz. A PRBS7 source makes 32 Gray-coded symbols per word. Two identical paths (MSB, LSB) serialize 32:1 and make three FFE taps at half rate. The driver sums the six taps into 0.8 V peak-to-peak differential PAM4.
+- **Receiver.** Termination, CTLE and VGA condition the signal. Twenty-four slicers and a one-tap unrolled DFE decide each symbol on two phases of the 14 GHz clock. Decoders, retimers and two 1:32 deserializers give two 32-bit words per 0.875 GHz word clock.
+- **Clocking.** The receiver has its own loop: it locks to a reference, then a linear phase detector tracks the data. Each side divides 14 GHz down to 0.875 GHz.
+- **Biasing.** One reference feeds a bias block per side. Every consumer gets a wire of its own.
 
-The models are written for a 0.7 V core supply (the models' comments say ASAP7). The channel between the transmitter's and the receiver's pads is not part of the design; a testbench supplies it.
+The models are written for a 0.7 V core supply (their comments say ASAP7). The channel between the pads is not part of the design; a testbench supplies it.
 
-The [documentation index](analog/PAM4SerDes/docs/README.md) has the full hierarchy, the top-level pins and the four section overviews: [Biasing](analog/PAM4SerDes/docs/Biasing/README.md), [Clocking](analog/PAM4SerDes/docs/Clocking/README.md), [Transmitter](analog/PAM4SerDes/docs/Transmitter/README.md), [Receiver](analog/PAM4SerDes/docs/Receiver/README.md).
+The [documentation index](analog/PAM4SerDes/docs/README.md) has the full hierarchy, the top-level pins and the four section overviews.
 
-## Run the full hierarchy
-
-You need **ngspice 45 or newer** and **VerA** (`vera`). The project shell, `./env.sh`, provides both. ngspice 44 does not work: it cannot place devices with more than 18 pins. The first time, the shell builds VerA from source, which takes a few minutes and about 3 GB of memory.
-
-**1. Build the deck and the devices.** From the repo root:
+## Check the design
 
 ```bash
-python3 .flows/tools/va_deck.py analog/PAM4SerDes/va/pam4_serdes.va \
-        -o analog/PAM4SerDes/build/sim/out/pam4_serdes.cir
+./env.sh                                     # ngspice 45 and VerA (the first run builds VerA: minutes)
+make -C analog/PAM4SerDes/build/sim check    # lint, arch, link, specs
 ```
 
-This reads the `.va` hierarchy, writes one ngspice deck, and builds the devices with `vera --emit-osdi` into `analog/PAM4SerDes/build/sim/out/osdi/`. Every module that is only wiring becomes a `.subckt`; every other module becomes an OSDI device. (VerA turns one `.va` file into one device and limits a device to 255 unknowns, so the whole hierarchy cannot be a single device.)
+| Step | What it does |
+|---|---|
+| `lint` | Every `.va` file compiles (`vera --lint`) |
+| `arch` | The hierarchy in the `.va` files is the one in [`architecture.txt`](analog/PAM4SerDes/architecture.txt). After a deliberate change: `make ... arch UPDATE=1` |
+| `link` | Builds one ngspice deck and the devices from the `.va` hierarchy, then runs the test decks. One PASS or FAIL line each; `link DECK=tb_cdr` runs one |
+| `specs` | Writes what the decks measured into the table above |
 
-The `.va` files stay the only source. Do not edit the generated deck.
+| Deck in [`analog/PAM4SerDes/test/`](analog/PAM4SerDes/test) | Checks |
+|---|---|
+| `tx_driver_test` | Driver and bias: the four PAM4 levels, FFE peak and de-emphasis |
+| `tb_pll` | The transmitter PLL locks, jitter on |
+| `tb_datapath` | Transmitter to receiver on ideal clocks: wiring, lane order, levels |
+| `tb_cdr` | The same with the receiver's clock recovered from the data |
+| `tb_top` | The whole top level in one run: PLL, clock recovery, bias blocks, jitter on |
 
-If a test deck needs devices of its own, add `--also <file.va> ...` to this command; they are built and loaded along with the design. The decks that check the received data need the PRBS checker: `--also analog/PAM4SerDes/test/prbs_chk.va`.
+CI ([`.github/workflows/analog.yaml`](.github/workflows/analog.yaml)) runs the same command on every change under `analog/` and, on `main`, commits the specs table.
 
-**2. Run a test deck that uses it**, with ngspice in batch mode. Run it from the test folder, because the decks use paths relative to it:
+If you write a deck for the hierarchy:
 
-```bash
-cd analog/PAM4SerDes/test
-ngspice -b <deck>.sp
-```
+- `.include "../build/sim/out/pam4_serdes.cir"` and place the top level or a part of it (`X1 <pins> pam4_serdes`), pins in the order of the module's port list. Do not edit the generated deck: the `.va` files are the source.
+- Use ngspice's default solver. `.option klu` gives wrong node voltages with these devices on ngspice 45.
+- Give `tran` its fourth argument, `tran 1p <tstop> 0 10u`. It sets ngspice's minimum time step (1e-11 times it); without it runs stop with "timestep too small".
+- Need a device of your own (a checker)? Add it to `VA_ALSO` in the Makefile.
 
-A test deck for the hierarchy:
+## Changelog
 
-- `.include`s the generated deck, `../build/sim/out/pam4_serdes.cir`.
-- Places the top level, or a part of it such as `tx_top`, as a subcircuit, for example `X1 <pins> pam4_serdes`. The pins are in the order of the module's port list (buses expanded as declared).
-- Runs with ngspice's **default solver**. Do not use `.option klu` here: it is faster, but it gives wrong node voltages with these OSDI devices on ngspice 45.
-- Gives `tran` its fourth, max-step argument, for example `tran 1p <tstop> 0 1m`. ngspice's minimum time step is 1e-11 times that argument. Without it the minimum is 1e-23 s, and the run stops with "timestep too small" just before a clock edge. The models still limit the real step to 0.5 ps, so this does not make the run coarser.
-
-Or, inside the `./env.sh` shell, run `make -C analog/PAM4SerDes/build/sim link`, which composes the deck and runs the link tests. It prints one PASS or FAIL line for each of three decks: `tx_driver_test` (driver and bias), `tb_datapath` (transmitter to receiver on ideal clocks) and `tb_cdr` (the same with the receiver's clock recovered from the data). Add `DECK=tb_cdr` to run one of them.
-
-### Where the tests are
-
-Test decks are in [`analog/PAM4SerDes/test/`](analog/PAM4SerDes/test). What has been simulated, and with what result, is recorded in the [integration status](analog/PAM4SerDes/docs/status.md), not in this README.
-
-## Changelogs and integration status
-
-- [`CHANGELOGS.md`](CHANGELOGS.md): what integration changed in each person's work, person by person, and how the top level is put together. If your model was touched, the reason is there.
-- [`analog/PAM4SerDes/docs/status.md`](analog/PAM4SerDes/docs/status.md): the integration status. What has been simulated, what passes, and what each owner still needs to look at.
+[`CHANGELOGS.md`](CHANGELOGS.md): what integration changed in each person's work, and how the top level is put together. If your model was touched, the reason is there.
 
 ## Hosted documentation
 
-The same pages, with the diagrams, are published as a website at [https://uw-asic.github.io/PAM4SerDes/](https://uw-asic.github.io/PAM4SerDes/) once GitHub Pages is enabled for the repo. Until then, read the Markdown files on GitHub, starting from the [documentation index](analog/PAM4SerDes/docs/README.md).
+The same pages, with the diagrams, are published at [https://uw-asic.github.io/PAM4SerDes/](https://uw-asic.github.io/PAM4SerDes/) once GitHub Pages is enabled for the repo. Until then, start from the [documentation index](analog/PAM4SerDes/docs/README.md).
 
 ## Repository layout
 
 ```
-analog/PAM4SerDes/va/       the Verilog-A models
-  pam4_serdes.va            top level
-  Clocking/  Transmitter/  Receiver/     (+ placeholders/ subfolders)
-analog/PAM4SerDes/test/     test decks
-analog/PAM4SerDes/docs/     the design documentation: one page per block
-.flows/tools/va_deck.py     turns the .va hierarchy into an ngspice deck
-docs/                       the documentation website (Vite + React, bun)
-CHANGELOGS.md               what integration changed, per person, and how the top level works
+analog/PAM4SerDes/va/               the Verilog-A models
+  pam4_serdes.va                    top level
+  Biasing/  Clocking/  Transmitter/  Receiver/
+analog/PAM4SerDes/test/             test decks
+analog/PAM4SerDes/docs/             one page per block
+analog/PAM4SerDes/architecture.txt  the hierarchy CI checks the models against
+.flows/tools/va_deck.py             .va hierarchy -> ngspice deck and devices
+.flows/tools/va_specs.py            deck output -> the specs table above
+docs/                               the documentation website (Vite + React, bun)
+CHANGELOGS.md                       what integration changed, per person
 ```
-
-There is no Biasing folder under `va/`: the one bias block, `tx_bias`, is in `va/Transmitter/`.
 
 ## Environment and generic flow documentation
 

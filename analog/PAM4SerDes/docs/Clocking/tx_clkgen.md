@@ -10,13 +10,9 @@
 
 ## Architecture
 
-`tx_clkgen` is the transmitter's clock tree. It takes the 14 GHz clock from the PLL and makes every clock the serializer needs: 14 GHz and 7 GHz as CML, and 3.5, 1.75 and 0.875 GHz as CMOS.
+The transmitter's clock tree. It takes the 14 GHz clock from the PLL and makes every clock the serializer needs: 14 GHz and 7 GHz as CML, and 3.5, 1.75 and 0.875 GHz as CMOS.
 
-The system needs it because the serializer is a tree of 2:1 multiplexers. Each level runs at twice the rate of the one before, so each level needs its own clock, and all of them must come from the same source to stay aligned.
-
-### Where it sits
-
-In [tx_top](../Transmitter/tx_top.md). Its input `ckin` is the single-ended CMOS output of [tx_pll](tx_pll.md). Its outputs go to these cells:
+In [tx_top](../Transmitter/tx_top.md). Its input `ckin` is the single-ended CMOS output of [tx_pll](tx_pll.md). Its outputs:
 
 | Clock | Type | Used by |
 |---|---|---|
@@ -41,11 +37,9 @@ The cells form one chain:
 | `u_d1p75` | [div2_tspc](div2_tspc.md) | `clk3p5` to `clk1p75` |
 | `u_d0p875` | [div2_tspc](div2_tspc.md) | `clk1p75` to `clk0p875` |
 
-Each `div2_tspc` toggles on the falling edge of its input.
-
-`pa_data` is the retimed 7 Gb/s lane 0 of the MSB path. It comes from [cml_dff_x4](cml_dff_x4.md) through an ideal `diff2se` cell (see [glue](glue.md)) in `tx_top`. The phase aligner sits between the CML part and the CMOS part of the tree, so the CMOS clocks follow the data that the CML part retimes.
-
-The parent passes `rj_scale`; this block uses it to scale the jitter of `clkbuf_cml` (40 fs) and of the three `div2_tspc` (300 fs each), and gives each instance its own seed.
+- Each `div2_tspc` toggles on the falling edge of its input.
+- `pa_data` is the retimed 7 Gb/s lane 0 of the MSB path. It comes from [cml_dff_x4](cml_dff_x4.md) through an ideal `diff2se` cell (see [glue](glue.md)) in `tx_top`. The phase aligner sits between the CML part and the CMOS part of the tree, so the CMOS clocks follow the data that the CML part retimes.
+- `rj_scale` scales the jitter of `clkbuf_cml` (40 fs) and of the three `div2_tspc` (300 fs each); each instance gets its own seed.
 
 ### Ports
 
@@ -67,8 +61,8 @@ The parent passes `rj_scale`; this block uses it to scale the jitter of `clkbuf_
 
 ## Topology research
 
-This block is wiring only, so there is no circuit to choose or size here. The topology research lives in the pages of its cells: [dcc_cml](dcc_cml.md#topology-research), [clkbuf_cml](clkbuf_cml.md#topology-research), [div2_cml](div2_cml.md#topology-research), [cml2cmos](cml2cmos.md#topology-research), [phase_aligner](phase_aligner.md#topology-research), [div2_tspc](div2_tspc.md#topology-research).
+Wiring only. See the cells: [dcc_cml](dcc_cml.md#topology-research), [clkbuf_cml](clkbuf_cml.md#topology-research), [div2_cml](div2_cml.md#topology-research), [cml2cmos](cml2cmos.md#topology-research), [phase_aligner](phase_aligner.md#topology-research), [div2_tspc](div2_tspc.md#topology-research).
 
 ## Sizing research
 
-This block is wiring only, so there is no circuit to choose or size here. The sizing research lives in the pages of its cells: [dcc_cml](dcc_cml.md#sizing-research), [clkbuf_cml](clkbuf_cml.md#sizing-research), [div2_cml](div2_cml.md#sizing-research), [cml2cmos](cml2cmos.md#sizing-research), [phase_aligner](phase_aligner.md#sizing-research), [div2_tspc](div2_tspc.md#sizing-research).
+Wiring only. See the cells: [dcc_cml](dcc_cml.md#sizing-research), [clkbuf_cml](clkbuf_cml.md#sizing-research), [div2_cml](div2_cml.md#sizing-research), [cml2cmos](cml2cmos.md#sizing-research), [phase_aligner](phase_aligner.md#sizing-research), [div2_tspc](div2_tspc.md#sizing-research).

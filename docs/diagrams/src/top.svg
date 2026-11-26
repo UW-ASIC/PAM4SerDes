@@ -74,7 +74,7 @@
   <text x="676" y="236" class="note mid">6 tail currents, 16 mA total</text>
   <path class="wb" marker-end="url(#ab)" d="M728,244 V266"/>
   <path class="w" marker-end="url(#a)" d="M826,208 H784"/>
-  <text x="832" y="212">vref<tspan class="note" dx="8">0.6 V</tspan></text>
+  <text x="832" y="212">vref<tspan class="note" dx="8">from bias_ref</tspan></text>
   <path class="w" marker-end="url(#a)" d="M826,222 H784"/>
   <text x="832" y="226">tx_en</text>
   <path class="w" marker-end="url(#a)" d="M784,236 H826"/>
@@ -141,9 +141,9 @@
   <text x="132" y="436" class="note end">2 x 32 bits</text>
 
   <path class="w" marker-end="url(#a)" d="M826,444 H744 V430"/>
-  <text x="832" y="448">vtt<tspan class="note" dx="8">termination ref.</tspan></text>
+  <text x="832" y="448">vtt<tspan class="note" dx="8">from rx_bias</tspan></text>
   <path class="w" marker-end="url(#a)" d="M826,458 H724 V430"/>
-  <text x="832" y="462">vctrl<tspan class="note" dx="8">VGA gain</tspan></text>
+  <text x="832" y="462">vctrl<tspan class="note" dx="8">from rx_bias</tspan></text>
 
   <rect class="clk" x="176" y="452" width="280" height="44" rx="4"/>
   <text x="316" y="471" class="name mid">rx_clkgen</text>

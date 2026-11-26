@@ -10,15 +10,7 @@
 
 ## Architecture
 
-`rx_deser_path` is the deserializer of one binary path. It takes that path's two 14 Gb/s bit streams, one from each sampling phase, and spreads them over 32 wires that change once per word-clock cycle.
-
-It is the mirror image of the transmitter's serializer: the received data is handed on as 32-bit words at 0.875 GHz. There are two instances, one for the MSBs and one for the LSBs.
-
-It is mostly wiring. Two small pieces of behaviour are written inline in the file and are not cells of their own.
-
-### How the data moves through it
-
-It is a tree of 1:2 demultiplexers. Each stage doubles the number of lanes and halves their rate.
+The 1:32 deserializer of one binary path: two 14 Gb/s bit streams in, one from each sampling phase, and a 32-bit word per word-clock cycle out. It is a tree of 1:2 demultiplexers plus two pieces written inline in the file, which are not cells of their own.
 
 | Stage | Cell | In to out | Clock |
 |---|---|---|---|
@@ -29,15 +21,9 @@ It is a tree of 1:2 demultiplexers. Each stage doubles the number of lanes and h
 | 4 | 16 x [demux2_cmos](demux2_cmos.md) | 16 x 1.75 Gb/s to 32 x 0.875 Gb/s | `clk875` |
 | inline | output register | 32 bits, copied to `data_out` | `word_clk` rising |
 
-Lane order: a demultiplexer puts the earlier bit of each pair on its `q0` and the later one on `q1`. At every stage, lane k is split into lane k (earlier) and lane k + N (later), where N is the number of lanes going in. For stage 1 the two inputs are lanes 0 and 1: `d0` goes to lanes 0 and 2, `d1` to lanes 1 and 3. The result is that `data_out[j]` holds time slot j, provided `d0` carries the earlier bit of each pair.
-
-### Where it sits
-
-In [rx_top](rx_top.md):
-
-- `d0` is connected to the **phase 1** retimer and `d1` to the **phase 0** retimer (both [rx_dec_retime](rx_dec_retime.md)). The header of `rx_top.va` explains why phase 1 is the earlier of each pair.
-- The clocks come from [rx_clkgen](../Clocking/rx_clkgen.md). `clk875` and `word_clk` are both connected to `clk0p875`.
-- `data_out` is the top-level output `rxd_m` or `rxd_l`.
+- Lane order: at every stage lane k is split into lane k (the earlier bit, on `q0`) and lane k + N (the later bit, on `q1`), where N is the number of lanes going in. So `data_out[j]` holds time slot j, provided `d0` carries the earlier bit of each pair.
+- In [rx_top](rx_top.md), `d0` comes from the phase 1 retimer and `d1` from the phase 0 retimer (both [rx_dec_retime](rx_dec_retime.md)): phase 1 is the earlier of each pair. The clocks come from [rx_clkgen](../Clocking/rx_clkgen.md); `clk875` and `word_clk` are both connected to `clk0p875`. `data_out` is the top-level output `rxd_m` or `rxd_l`.
+- The `demux2_cml` instances keep their default `vdd` of 1.0 V, so the CML lanes inside this block sit around 0.85 V and not around 0.55 V like the other CML. Every reader of those lanes looks only at the difference. The `demux2_cmos` defaults are for 0.7 V.
 
 ### Ports
 
@@ -49,106 +35,34 @@ In [rx_top](rx_top.md):
 | `word_clk` | input | Clock of the output register |
 | `data_out[0:31]` | output | The word, CMOS levels. Index j is time slot j |
 
-There are no supply pins.
-
 ### Parameters
 
 | Parameter | Default | Meaning |
 |---|---|---|
 | `vdd_cmos` | 0.7 V | CMOS high level of the inline conversion and of the output register |
 
-### What the model leaves out
+**Not modelled:** delay and edge time of the inline conversion and of the output register (they switch instantly), supply pins.
 
-- The inline conversion and the output register are ideal: they switch instantly, with no delay and no edge time.
-- The `demux2_cml` instances use their default parameters. Their default `vdd` is 1.0 V, so inside this block the CML lanes sit around 0.85 V and not around 0.55 V like the other CML in the design. Every reader of those lanes looks only at the difference, so the data is not affected.
-- The `demux2_cmos` instances also use their defaults, which are for 0.7 V.
-
-Existing testbench for the whole datapath: [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, on ideal clocks).
+**Checked by:** [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, ideal clocks).
 
 ## Topology research
 
-Most of this block is wiring. The topology research lives in the pages of its cells: [demux2_cml](demux2_cml.md#topology-research), [demux2_cmos](demux2_cmos.md#topology-research). Two pieces are written inline in this file and have no cell of their own yet: the CML-to-CMOS conversion and the 32-bit output register. Use the template below for those two.
+Mostly wiring: see [demux2_cml](demux2_cml.md#topology-research) and [demux2_cmos](demux2_cmos.md#topology-research). The rest of this section is for the two inline pieces, which have no cell of their own yet: the CML-to-CMOS conversion and the 32-bit output register.
 
-*To be filled in by the owner during the topology-research stage.*
+*To be filled in by the owner.*
 
-The goal of this section is to decide which circuit implements this block, and to write down why, so the next person does not have to redo the search.
-
-### Requirements
-
-What the circuit must do. Start from the [Architecture](#architecture) section above, then add what is missing (supply, load, power, area, noise) and name the source of every number.
-
-Already stated in the model. Parameter defaults are the model's present assumptions, not signed-off specs: confirm or correct each one here.
+Known from the model (defaults are assumptions to confirm):
 
 - CML-to-CMOS conversion: 8 lanes at 3.5 Gb/s, between the second and the third demultiplexer stage (`rx_deser_path.va`, code)
 - Output register: 32 bits, clocked on the rising edge of the 0.875 GHz word clock, CMOS levels 0 to 0.7 V (`rx_deser_path.va`, code and parameter `vdd_cmos`)
 - The words are meant to be read on the falling edge of the word clock (`rx_top.va`, header)
 
-To be added by the owner:
-
-- (add requirements here)
-
-### Candidate topologies
-
-One row per circuit you seriously considered. Two or three good candidates are enough.
-
-| Candidate | Source / reference | Pros | Cons |
-|---|---|---|---|
-| | | | |
-
-### Chosen topology
-
-Which candidate you chose and the reasons, measured against the requirements above. Say what you gave up by not choosing the others.
-
-### Schematic
-
-A schematic or a sketch of the chosen circuit. Name its nodes like the ports in the Architecture section. Put the image file in `analog/PAM4SerDes/docs/img/`, named `rx_deser_path_<what>.svg` (or `.png`), and reference it from this page as `![rx_deser_path schematic](../img/rx_deser_path_<what>.svg)`.
-
-### Open questions
-
-- (questions for the section lead or for neighbouring blocks' owners)
-
-### References
-
-- (papers, textbook sections, earlier designs; give enough detail that someone else can find them)
+To add: missing requirements (supply, load, power, area, noise) with sources; candidate topologies with pros and cons; the choice and the reason; a schematic (`../img/rx_deser_path_<what>.svg`); open questions; references.
 
 ## Sizing research
 
-Most of this block is wiring. The sizing research lives in the pages of its cells: [demux2_cml](demux2_cml.md#sizing-research), [demux2_cmos](demux2_cmos.md#sizing-research). Two pieces are written inline in this file and have no cell of their own yet: the CML-to-CMOS conversion and the 32-bit output register. Use the template below for those two.
+Mostly wiring: see [demux2_cml](demux2_cml.md#sizing-research) and [demux2_cmos](demux2_cmos.md#sizing-research). The rest of this section is for the two inline pieces.
 
-*To be filled in by the owner during the sizing-research stage, once the topology is chosen.*
+*To be filled in by the owner once the topology is chosen.*
 
-The goal of this section is to record the device sizes that meet the block's specs, how they were found, and the simulations that show it.
-
-### Target specs
-
-Copy the requirements from the Topology research section and turn each one into a number you can simulate.
-
-| Spec | Target | Source |
-|---|---|---|
-| | | |
-
-### Sizing method
-
-How the sizes were found (hand calculation, gm/Id, sweep), with enough detail that someone else can repeat it.
-
-### Devices
-
-| Device | W/L or fingers | Bias point |
-|---|---|---|
-| | | |
-
-### Simulation results
-
-One row per spec. Name the testbench file so the result can be reproduced.
-
-| Spec | Target | Result | Testbench | Conditions |
-|---|---|---|---|---|
-| | | | | |
-
-### Corners checked
-
-List the process, voltage and temperature corners you simulated, and say which one was worst.
-
-### Open issues
-
-- (specs not met yet, things left to check)
+Target specs (with source), sizing method, device table, results against the targets, corners checked, open issues.

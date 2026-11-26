@@ -13,7 +13,6 @@ The project's pages (the sections **PAM4 SerDes**, **Biasing**, **Clocking**, **
 \`\`\`
 analog/PAM4SerDes/docs/
   README.md             PAM4 SerDes > Overview
-  status.md             PAM4 SerDes > Integration status
   img/                  diagrams and pictures
   Biasing/README.md     Biasing > Overview
   Biasing/<block>.md    one page per block

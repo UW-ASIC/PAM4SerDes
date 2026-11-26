@@ -10,25 +10,12 @@
 
 ## Architecture
 
-`vga` is the variable-gain amplifier, the last cell of the analog front end. Its gain is set by a control voltage.
+The variable-gain amplifier, the last cell of the analog front end: it brings the signal to the amplitude the slicer thresholds were chosen for.
 
-The system needs it because the slicers compare the signal with fixed thresholds. The amplitude that arrives depends on the channel, so something has to bring it to the size the thresholds were chosen for. That is this block's job.
+- The gain in dB is a straight line in `vctrl` between `v_min` and `v_max`, clamped outside that range. Both default gains are below 0 dB, so with the defaults the block attenuates.
+- One pole at `fp`, a hard clip at plus or minus `vout_limit`, a fixed output common mode, and `r_in` from each input to ground (the CTLE drives only a differential voltage, so the input common mode needs a DC path).
 
-### How the model works
-
-- The gain in dB is a straight line in `vctrl`: `min_gain_db` at `v_min`, `max_gain_db` at `v_max`. Outside that range the control voltage is clamped.
-- One pole at `fp`.
-- The differential output is clipped hard at plus or minus `vout_limit`.
-- The two outputs are driven around a fixed common mode.
-- Each input has a resistor `r_in` to ground. The code comment gives the reason: the CTLE in front drives only a differential voltage, so without it the input common mode would have no DC path.
-
-Both default gains are below 0 dB, so with the defaults the block attenuates.
-
-### Where it sits
-
-In [rx_afe](rx_afe.md), after the [ctle](ctle.md). Its output is the front end's output: it drives the 24 slicers in [rx_decision](rx_decision.md) and the phase detector in [rx_cdr](../Clocking/rx_cdr.md).
-
-`rx_afe` sets the control range to 0 .. 0.7 V and the output common mode to 0.55 V.
+In [rx_afe](rx_afe.md), after the [ctle](ctle.md). It drives the 24 slicers in [rx_decision](rx_decision.md) and the phase detector in [rx_cdr](../Clocking/rx_cdr.md).
 
 ### Ports
 
@@ -37,8 +24,6 @@ In [rx_afe](rx_afe.md), after the [ctle](ctle.md). Its output is the front end's
 | `in_p`, `in_n` | input | Signal from the CTLE |
 | `vctrl` | input | Gain control voltage |
 | `out_p`, `out_n` | output | Amplified signal around the common mode |
-
-There are no supply pins.
 
 ### Parameters
 
@@ -53,27 +38,15 @@ There are no supply pins.
 | `r_in` | 1 Gohm | Resistance from each input to ground |
 | `r_out` | 0 | Declared, but not used in the model |
 
-### What the model leaves out
+**Not modelled:** noise, offset, loading by the slicers (the outputs are ideal voltage sources), gradual compression, the `g[5:0]` gain code, supply pins. The block prints its output voltage at every time step with `$strobe`.
 
-- No noise and no offset.
-- The outputs are ideal voltage sources: the 24 slicers behind them do not load the block.
-- The clipping is a hard limit, not a gradual compression.
-- Gain control is a continuous voltage; the `g[5:0]` code is not modelled.
-- The block prints its output voltage at every time step with `$strobe`.
-
-Existing testbench for the whole datapath: [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, on ideal clocks).
+**Checked by:** [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, ideal clocks).
 
 ## Topology research
 
-*To be filled in by the owner during the topology-research stage.*
+*To be filled in by the owner.*
 
-The goal of this section is to decide which circuit implements this block, and to write down why, so the next person does not have to redo the search.
-
-### Requirements
-
-What the circuit must do. Start from the [Architecture](#architecture) section above, then add what is missing (supply, load, power, area, noise) and name the source of every number.
-
-Already stated in the model. Parameter defaults are the model's present assumptions, not signed-off specs: confirm or correct each one here.
+Known from the model (defaults are assumptions to confirm):
 
 - Gain range -4.703 dB to -1.847 dB (`vga.va`, parameters `min_gain_db`, `max_gain_db`)
 - Control voltage 0 to 0.7 V in the hierarchy; the cell's own default range is 0 to 1 V (`rx_afe.va`, header)
@@ -84,70 +57,10 @@ Already stated in the model. Parameter defaults are the model's present assumpti
 - Levels expected at its output, the slicer inputs: plus or minus 150 mV and plus or minus 50 mV (`slicer.va`, header)
 - Loads: 24 slicers and the CDR phase detector (`rx_afe.va`, header)
 
-To be added by the owner:
-
-- (add requirements here)
-
-### Candidate topologies
-
-One row per circuit you seriously considered. Two or three good candidates are enough.
-
-| Candidate | Source / reference | Pros | Cons |
-|---|---|---|---|
-| | | | |
-
-### Chosen topology
-
-Which candidate you chose and the reasons, measured against the requirements above. Say what you gave up by not choosing the others.
-
-### Schematic
-
-A schematic or a sketch of the chosen circuit. Name its nodes like the ports in the Architecture section. Put the image file in `analog/PAM4SerDes/docs/img/`, named `vga_<what>.svg` (or `.png`), and reference it from this page as `![vga schematic](../img/vga_<what>.svg)`.
-
-### Open questions
-
-- (questions for the section lead or for neighbouring blocks' owners)
-
-### References
-
-- (papers, textbook sections, earlier designs; give enough detail that someone else can find them)
+To add: missing requirements (supply, load, power, area, noise) with sources; candidate topologies with pros and cons; the choice and the reason; a schematic (`../img/vga_<what>.svg`); open questions; references.
 
 ## Sizing research
 
-*To be filled in by the owner during the sizing-research stage, once the topology is chosen.*
+*To be filled in by the owner once the topology is chosen.*
 
-The goal of this section is to record the device sizes that meet the block's specs, how they were found, and the simulations that show it.
-
-### Target specs
-
-Copy the requirements from the Topology research section and turn each one into a number you can simulate.
-
-| Spec | Target | Source |
-|---|---|---|
-| | | |
-
-### Sizing method
-
-How the sizes were found (hand calculation, gm/Id, sweep), with enough detail that someone else can repeat it.
-
-### Devices
-
-| Device | W/L or fingers | Bias point |
-|---|---|---|
-| | | |
-
-### Simulation results
-
-One row per spec. Name the testbench file so the result can be reproduced.
-
-| Spec | Target | Result | Testbench | Conditions |
-|---|---|---|---|---|
-| | | | | |
-
-### Corners checked
-
-List the process, voltage and temperature corners you simulated, and say which one was worst.
-
-### Open issues
-
-- (specs not met yet, things left to check)
+Target specs (with source), sizing method, device table, results against the targets, corners checked, open issues.

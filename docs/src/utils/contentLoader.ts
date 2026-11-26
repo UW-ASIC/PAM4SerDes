@@ -58,7 +58,7 @@ const ROOT_SECTION = 'PAM4-SerDes'
 const PROJECT_SECTIONS = [ROOT_SECTION, 'Biasing', 'Clocking', 'Transmitter', 'Receiver']
 // Page order inside the root section; inside a section folder README.md comes first.
 // Everything else follows alphabetically, and the changelog closes the root section.
-const FIRST_PAGES = ['README', 'status']
+const FIRST_PAGES = ['README']
 const LAST_PAGE = 'CHANGELOGS'
 
 const sectionTitle = (id: string) =>
@@ -75,7 +75,7 @@ function loadProjectPages(): Section[] {
 
   for (const [file, content] of Object.entries(projectMarkdown)) {
     // '../../../analog/PAM4SerDes/docs/Clocking/tx_pll.md' -> section 'Clocking', name 'tx_pll'
-    // '../../../analog/PAM4SerDes/docs/status.md'          -> root section, name 'status'
+    // '../../../analog/PAM4SerDes/docs/README.md'          -> root section, name 'README'
     // '../../../CHANGELOGS.md'                             -> root section, name 'CHANGELOGS'
     const source = file.replace(/^(\.\.\/)+/, '')
     const parts = source.replace(PROJECT_DOCS, '').replace(/\.md$/, '').split('/')

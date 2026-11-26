@@ -10,19 +10,9 @@
 
 ## Architecture
 
-`dcc_cml` is the duty-cycle corrector. It takes the 14 GHz clock from the VCO and puts out a clock of the same frequency whose high time is a set fraction of the period, 50 % by default.
+The duty-cycle corrector, the first cell of both clock trees: 14 GHz in, the same frequency out with a high time of `duty_target` of the period, as a differential clock (the VCO clock is single-ended). The model measures the input period and runs its own oscillator at that frequency. The header warns that the output phase is not guaranteed to follow the input's rising edge, and says to use the model for functional duty-cycle testing.
 
-The system needs it because both the transmitter and the receiver are half-rate: they use the rising **and** the falling edge of the 14 GHz clock, one for each of the two symbols in a clock period. If the clock is not high for exactly half the period, the two symbols get different widths.
-
-It is the first cell of both clock trees. In the present models it also turns the single-ended VCO clock into a differential one.
-
-### How the model works
-
-It measures the input period from one rising edge to the next, runs its own oscillator at that frequency, and makes the output high for `duty_target` of each cycle. The header warns that the output phase is not guaranteed to follow the input's rising edge, and says to use the model for functional duty-cycle testing.
-
-### Where it sits
-
-In [tx_clkgen](tx_clkgen.md) and [rx_clkgen](rx_clkgen.md): the input is the VCO clock (from [tx_pll](tx_pll.md) or [rx_cdr](rx_cdr.md)), the output goes to [clkbuf_cml](clkbuf_cml.md). Both parents set the input threshold to 0.35 V, the middle of the CMOS swing.
+In [tx_clkgen](tx_clkgen.md) and [rx_clkgen](rx_clkgen.md): the input is the VCO clock (from [tx_pll](tx_pll.md) or [rx_cdr](rx_cdr.md)), the output goes to [clkbuf_cml](clkbuf_cml.md).
 
 ### Ports
 
@@ -37,29 +27,19 @@ In [tx_clkgen](tx_clkgen.md) and [rx_clkgen](rx_clkgen.md): the input is the VCO
 | Parameter | Default | Meaning |
 |---|---|---|
 | `duty_target` | 0.500 | Output duty cycle, allowed 0.496 to 0.504 |
-| `vth` | 0 V | Input threshold. Both parents set 0.35 V |
+| `vth` | 0 V | Input threshold. Both parents set 0.35 V, the middle of the CMOS swing |
 | `f_init` | 14 GHz | Frequency assumed until two rising edges have been seen |
 | `vcm` | 0.6 V | Output common mode. Placeholder |
 | `vdiff` | 0.4 V | Output differential amplitude. Placeholder |
 | `t_edge` | 1 ps | Output transition time |
 
-### What the model leaves out
-
-- It is not a correction loop. It regenerates the clock, so it does not show how well a real corrector removes a given duty-cycle error, or how long it takes.
-- The output levels are placeholders, as the header says. With the defaults each output swings between 0.4 V and 0.8 V, which is not the CML level used elsewhere (0.4 V to 0.7 V) and goes above the 0.7 V supply. The `clkbuf_cml` behind it limits the signal, so the rest of the tree sees normal CML levels.
-- No jitter.
+**Not modelled:** a correction loop (the model regenerates the clock, so it does not show how well or how fast a real corrector removes a duty-cycle error), jitter. With the placeholder levels each output swings between 0.4 V and 0.8 V, above the 0.7 V supply and not the CML level used elsewhere (0.4 V to 0.7 V); the `clkbuf_cml` behind it limits the signal.
 
 ## Topology research
 
-*To be filled in by the owner during the topology-research stage.*
+*To be filled in by the owner.*
 
-The goal of this section is to decide which circuit implements this block, and to write down why, so the next person does not have to redo the search.
-
-### Requirements
-
-What the circuit must do. Start from the [Architecture](#architecture) section above, then add what is missing (supply, load, power, area, noise) and name the source of every number.
-
-Already stated in the model. Parameter defaults are the model's present assumptions, not signed-off specs: confirm or correct each one here.
+Known from the model (defaults are assumptions to confirm):
 
 - Output duty cycle 49.6 % to 50.4 %, nominal 50 % (`dcc_cml.va`, comment "Project requirement" on `duty_target`)
 - CML style (`dcc_cml.va`, header)
@@ -67,70 +47,10 @@ Already stated in the model. Parameter defaults are the model's present assumpti
 - Not specified by the project yet, according to the header: transistor topology, control algorithm, output common mode and output swing (`dcc_cml.va`, header)
 - A transistor-level CML version will need a differential input; the model's input is single-ended (`dcc_cml.va`, port comment)
 
-To be added by the owner:
-
-- (add requirements here)
-
-### Candidate topologies
-
-One row per circuit you seriously considered. Two or three good candidates are enough.
-
-| Candidate | Source / reference | Pros | Cons |
-|---|---|---|---|
-| | | | |
-
-### Chosen topology
-
-Which candidate you chose and the reasons, measured against the requirements above. Say what you gave up by not choosing the others.
-
-### Schematic
-
-A schematic or a sketch of the chosen circuit. Name its nodes like the ports in the Architecture section. Put the image file in `analog/PAM4SerDes/docs/img/`, named `dcc_cml_<what>.svg` (or `.png`), and reference it from this page as `![dcc_cml schematic](../img/dcc_cml_<what>.svg)`.
-
-### Open questions
-
-- (questions for the section lead or for neighbouring blocks' owners)
-
-### References
-
-- (papers, textbook sections, earlier designs; give enough detail that someone else can find them)
+To add: missing requirements (supply, load, power, area, noise) with sources; candidate topologies with pros and cons; the choice and the reason; a schematic (`../img/dcc_cml_<what>.svg`); open questions; references.
 
 ## Sizing research
 
-*To be filled in by the owner during the sizing-research stage, once the topology is chosen.*
+*To be filled in by the owner once the topology is chosen.*
 
-The goal of this section is to record the device sizes that meet the block's specs, how they were found, and the simulations that show it.
-
-### Target specs
-
-Copy the requirements from the Topology research section and turn each one into a number you can simulate.
-
-| Spec | Target | Source |
-|---|---|---|
-| | | |
-
-### Sizing method
-
-How the sizes were found (hand calculation, gm/Id, sweep), with enough detail that someone else can repeat it.
-
-### Devices
-
-| Device | W/L or fingers | Bias point |
-|---|---|---|
-| | | |
-
-### Simulation results
-
-One row per spec. Name the testbench file so the result can be reproduced.
-
-| Spec | Target | Result | Testbench | Conditions |
-|---|---|---|---|---|
-| | | | | |
-
-### Corners checked
-
-List the process, voltage and temperature corners you simulated, and say which one was worst.
-
-### Open issues
-
-- (specs not met yet, things left to check)
+Target specs (with source), sizing method, device table, results against the targets, corners checked, open issues.

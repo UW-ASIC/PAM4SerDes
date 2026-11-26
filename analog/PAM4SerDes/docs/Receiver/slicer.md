@@ -10,32 +10,9 @@
 
 ## Architecture
 
-`slicer` is a clocked comparator. On each rising clock edge it compares the differential input with a differential threshold and holds the answer, high or low, until the next rising edge.
+A clocked comparator. At each rising zero crossing of `clkp` - `clkn` it decides +1 if `V(vinp, vinn) > V(vthp, vthn) + offset` and -1 otherwise, and holds that until the next crossing. The outputs sit at `v_commonmode` plus and minus half of `vswing` times the decision. The header gives the numbers the block is built around: levels of -150, -50, +50 and +150 mV, so thresholds of -100, 0 and +100 mV.
 
-The system needs it to turn the analog PAM4 signal into decisions. One slicer answers one question: is the signal above this threshold? Three slicers with three thresholds separate the four levels. The receiver uses 24 of them; the [rx_decision](rx_decision.md) page explains why.
-
-### How the model works
-
-At the rising zero crossing of `clkp` - `clkn`:
-
-```
-decision = +1  if  V(vinp, vinn) > V(vthp, vthn) + offset   else  -1
-```
-
-The two outputs then sit at `v_commonmode` plus and minus half of `vswing` times the decision, with edges of length `t_risefall`.
-
-The header gives the numbers the block is built around: the levels are -150, -50, +50 and +150 mV, so the thresholds are -100, 0 and +100 mV.
-
-### Where it sits
-
-In [rx_decision](rx_decision.md), 24 instances:
-
-- `vinp` / `vinn`: the front end's output, the same for all 24.
-- `vthp` / `vthn`: the reference for this slicer, driven by [dfe1_unrolled_hr](dfe1_unrolled_hr.md).
-- `clkp` / `clkn`: `clk14`. The 12 slicers of phase 1 have it connected swapped, so they sample on the falling edge.
-- `voutp` / `voutn`: back to the DFE, which picks 3 of each phase's 12.
-
-`rx_decision` uses the default parameters.
+In [rx_decision](rx_decision.md), 24 instances with default parameters. `vinp` / `vinn` is the front end's output, the same for all 24. `vthp` / `vthn` comes from the slicer's own [threshold_dac](threshold_dac.md). The clock is `clk14`, connected swapped on the 12 slicers of phase 1, so they sample on the falling edge. `voutp` / `voutn` goes to [dfe1_unrolled_hr](dfe1_unrolled_hr.md), which picks 3 of each phase's 12.
 
 ### Ports
 
@@ -45,8 +22,6 @@ In [rx_decision](rx_decision.md), 24 instances:
 | `vthp`, `vthn` | input | The threshold, as a differential voltage |
 | `clkp`, `clkn` | input | Clock; the decision is taken at its rising zero crossing |
 | `voutp`, `voutn` | output | The held decision, differential |
-
-There are no supply pins.
 
 ### Parameters
 
@@ -58,28 +33,15 @@ There are no supply pins.
 | `v_commonmode` | 0.5 V | Output common mode |
 | `vswing` | 300 mV | Output swing of each side, peak to peak |
 
-The file's comment says these values are placeholders.
+**Not modelled:** noise (the header gives a budget), regeneration and metastability (the decision is instant, however small the input), kickback, input capacitance, supply pins. The file's comment says the parameter values are placeholders. The default output common mode (0.5 V) is not the 0.55 V of the other CML cells; the DFE reads only the difference.
 
-### What the model leaves out
-
-- Noise: the header gives a noise budget, but the model is noiseless.
-- Regeneration: the decision is instant and always clean, however small the input is. There is no metastability and no clock-to-output delay (`t_delay` is 0).
-- Kickback onto the input and the threshold, and any input capacitance.
-- The output common mode default (0.5 V) is not the 0.55 V the other CML cells use. The DFE reads only the difference, so the hierarchy is not affected.
-
-Existing testbench for the whole datapath: [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, on ideal clocks).
+**Checked by:** [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, ideal clocks).
 
 ## Topology research
 
-*To be filled in by the owner during the topology-research stage.*
+*To be filled in by the owner.*
 
-The goal of this section is to decide which circuit implements this block, and to write down why, so the next person does not have to redo the search.
-
-### Requirements
-
-What the circuit must do. Start from the [Architecture](#architecture) section above, then add what is missing (supply, load, power, area, noise) and name the source of every number.
-
-Already stated in the model. Parameter defaults are the model's present assumptions, not signed-off specs: confirm or correct each one here.
+Known from the model (defaults are assumptions to confirm):
 
 - PAM4 levels at the input: -150, -50, +50, +150 mV (`slicer.va`, header)
 - Thresholds: -100, 0, +100 mV (`slicer.va`, header)
@@ -92,70 +54,10 @@ Already stated in the model. Parameter defaults are the model's present assumpti
 - Output levels in the model, marked as placeholders: common mode 0.5 V, swing 300 mV, edge 5 ps (`slicer.va`, parameters `v_commonmode`, `vswing`, `t_risefall`)
 - Time available to the DFE behind it: the selection happens half a clock period after the sample (`dfe1_unrolled_hr.va`, header)
 
-To be added by the owner:
-
-- (add requirements here)
-
-### Candidate topologies
-
-One row per circuit you seriously considered. Two or three good candidates are enough.
-
-| Candidate | Source / reference | Pros | Cons |
-|---|---|---|---|
-| | | | |
-
-### Chosen topology
-
-Which candidate you chose and the reasons, measured against the requirements above. Say what you gave up by not choosing the others.
-
-### Schematic
-
-A schematic or a sketch of the chosen circuit. Name its nodes like the ports in the Architecture section. Put the image file in `analog/PAM4SerDes/docs/img/`, named `slicer_<what>.svg` (or `.png`), and reference it from this page as `![slicer schematic](../img/slicer_<what>.svg)`.
-
-### Open questions
-
-- (questions for the section lead or for neighbouring blocks' owners)
-
-### References
-
-- (papers, textbook sections, earlier designs; give enough detail that someone else can find them)
+To add: missing requirements (supply, load, power, area, noise) with sources; candidate topologies with pros and cons; the choice and the reason; a schematic (`../img/slicer_<what>.svg`); open questions; references.
 
 ## Sizing research
 
-*To be filled in by the owner during the sizing-research stage, once the topology is chosen.*
+*To be filled in by the owner once the topology is chosen.*
 
-The goal of this section is to record the device sizes that meet the block's specs, how they were found, and the simulations that show it.
-
-### Target specs
-
-Copy the requirements from the Topology research section and turn each one into a number you can simulate.
-
-| Spec | Target | Source |
-|---|---|---|
-| | | |
-
-### Sizing method
-
-How the sizes were found (hand calculation, gm/Id, sweep), with enough detail that someone else can repeat it.
-
-### Devices
-
-| Device | W/L or fingers | Bias point |
-|---|---|---|
-| | | |
-
-### Simulation results
-
-One row per spec. Name the testbench file so the result can be reproduced.
-
-| Spec | Target | Result | Testbench | Conditions |
-|---|---|---|---|---|
-| | | | | |
-
-### Corners checked
-
-List the process, voltage and temperature corners you simulated, and say which one was worst.
-
-### Open issues
-
-- (specs not met yet, things left to check)
+Target specs (with source), sizing method, device table, results against the targets, corners checked, open issues.

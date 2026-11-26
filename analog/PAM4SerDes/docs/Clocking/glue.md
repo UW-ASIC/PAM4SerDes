@@ -10,23 +10,15 @@
 
 ## Architecture
 
-This page covers three small cells that the model's headers call **ideal glue**. They stand for wiring or trivial logic that is not drawn as a block, so they add no non-ideal behaviour.
+Three small cells that the models' headers call ideal glue: wiring or trivial logic that is not drawn as a block.
 
-| Cell | File | What it does |
-|---|---|---|
-| `diff2se` | `va/Clocking/diff2se.va` | Differential to single-ended: `V(out) = V(p) - V(n)` |
-| `qdelay` | `va/Clocking/cdr_glue.va` | A pure delay, a quarter of the 14 GHz period by default |
-| `nor2` | `va/Clocking/cdr_glue.va` | An ideal NOR gate: `y = vdd * (1 - a) * (1 - b)`, with `a` and `b` scaled to 0..1 |
-
-They exist because two of the team's blocks expect inputs that the blocks around them do not provide:
-
-- [cdr_pd_linear](cdr_pd_linear.md) and [phase_aligner](phase_aligner.md) read single-ended signals around 0 V. The data and clocks they watch are differential. `diff2se` bridges that.
-- `cdr_pd_linear` needs a quadrature copy of the 14 GHz clock. The architecture drawing the headers refer to (`Detailed.png`) has no quadrature source, so `qdelay` makes one by delaying the clock a quarter period.
-- `nor2` makes the charge-pump enable of the receiver's frequency loop.
+| Cell | File | What it does | Why it exists |
+|---|---|---|---|
+| `diff2se` | `va/Clocking/diff2se.va` | Differential to single-ended: `V(out) = V(p) - V(n)` | [cdr_pd_linear](cdr_pd_linear.md) and [phase_aligner](phase_aligner.md) read single-ended signals around 0 V; the data and clocks they watch are differential |
+| `qdelay` | `va/Clocking/cdr_glue.va` | A pure delay, a quarter of the 14 GHz period by default | `cdr_pd_linear` needs a quadrature copy of the 14 GHz clock, and the architecture drawing the headers refer to (`Detailed.png`) has no quadrature source |
+| `nor2` | `va/Clocking/cdr_glue.va` | An ideal NOR gate: `y = vdd * (1 - a) * (1 - b)`, with `a` and `b` scaled to 0..1 | Makes the charge-pump enable of the receiver's frequency loop |
 
 `diff2se` was moved to its own file during integration, unchanged, so that `tx_top` can include it without the other two cells.
-
-### Where it sits
 
 | Parent | Instance | Cell | Role |
 |---|---|---|---|
@@ -42,108 +34,33 @@ They exist because two of the team's blocks expect inputs that the blocks around
 |---|---|---|---|
 | `diff2se` | `p`, `n` | input | Differential signal |
 | `diff2se` | `out` | output | The difference, relative to `vss` |
-| `diff2se` | `vss` | inout | Ground |
 | `qdelay` | `in` | input | Signal to delay |
 | `qdelay` | `out` | output | The same signal, `td` later |
-| `qdelay` | `vss` | inout | Ground |
 | `nor2` | `a`, `b` | input | Logic inputs, 0 V to `vdd` |
 | `nor2` | `y` | output | NOR of the inputs |
+| `diff2se`, `qdelay` | `vss` | inout | Ground |
 | `nor2` | `vdd`, `vss` | inout | Supply and ground |
 
-### Parameters
+The only parameter is `td` of `qdelay`: default 17.857 ps, a quarter of the 14 GHz period. `rx_cdr` passes its `tq`.
 
-| Parameter | Default | Meaning |
-|---|---|---|
-| `td` (of `qdelay`) | 17.857 ps | Delay: a quarter of the 14 GHz period. `rx_cdr` passes its `tq` |
-
-`diff2se` and `nor2` have no parameters.
-
-### What the model leaves out
-
-Everything: these cells are exact by design. A real differential-to-single-ended stage has gain, delay and offset; a real quadrature clock has a phase error; a real gate has delay.
+**Not modelled:** everything a real cell adds (gain, delay and offset of a differential-to-single-ended stage, phase error of a quadrature clock, gate delay).
 
 ## Topology research
 
-*To be filled in by the owner during the topology-research stage.*
+For each cell, first decide whether the real circuit needs a cell there at all, and record that decision here.
 
-The goal of this section is to decide which circuit implements this block, and to write down why, so the next person does not have to redo the search.
+*To be filled in by the owner.*
 
-These three cells are ideal stand-ins. For each one, first decide whether the real circuit needs a cell there at all, and record that decision here. The headers give the reason each exists: the two detectors read single-ended signals, and the architecture drawing has no quadrature clock source.
-
-### Requirements
-
-What the circuit must do. Start from the [Architecture](#architecture) section above, then add what is missing (supply, load, power, area, noise) and name the source of every number.
-
-Already stated in the model. Parameter defaults are the model's present assumptions, not signed-off specs: confirm or correct each one here.
+Known from the model (defaults are assumptions to confirm):
 
 - `qdelay`: a quarter of the 14 GHz period, 17.857 ps (`cdr_glue.va`, parameter `td`)
 - `nor2`: pump enable = NOT (`lock` OR `force_lock`) (`rx_cdr.va`, header)
 - `diff2se`: the detectors behind it read single-ended signals around 0 V; the data and clocks they watch are differential (`diff2se.va`, header)
 
-To be added by the owner:
-
-- (add requirements here)
-
-### Candidate topologies
-
-One row per circuit you seriously considered. Two or three good candidates are enough.
-
-| Candidate | Source / reference | Pros | Cons |
-|---|---|---|---|
-| | | | |
-
-### Chosen topology
-
-Which candidate you chose and the reasons, measured against the requirements above. Say what you gave up by not choosing the others.
-
-### Schematic
-
-A schematic or a sketch of the chosen circuit. Name its nodes like the ports in the Architecture section. Put the image file in `analog/PAM4SerDes/docs/img/`, named `glue_<what>.svg` (or `.png`), and reference it from this page as `![glue schematic](../img/glue_<what>.svg)`.
-
-### Open questions
-
-- (questions for the section lead or for neighbouring blocks' owners)
-
-### References
-
-- (papers, textbook sections, earlier designs; give enough detail that someone else can find them)
+To add: missing requirements (supply, load, power, area, noise) with sources; candidate topologies with pros and cons; the choice and the reason; a schematic (`../img/glue_<what>.svg`); open questions; references.
 
 ## Sizing research
 
-*To be filled in by the owner during the sizing-research stage, once the topology is chosen.*
+*To be filled in by the owner once the topology is chosen.*
 
-The goal of this section is to record the device sizes that meet the block's specs, how they were found, and the simulations that show it.
-
-### Target specs
-
-Copy the requirements from the Topology research section and turn each one into a number you can simulate.
-
-| Spec | Target | Source |
-|---|---|---|
-| | | |
-
-### Sizing method
-
-How the sizes were found (hand calculation, gm/Id, sweep), with enough detail that someone else can repeat it.
-
-### Devices
-
-| Device | W/L or fingers | Bias point |
-|---|---|---|
-| | | |
-
-### Simulation results
-
-One row per spec. Name the testbench file so the result can be reproduced.
-
-| Spec | Target | Result | Testbench | Conditions |
-|---|---|---|---|---|
-| | | | | |
-
-### Corners checked
-
-List the process, voltage and temperature corners you simulated, and say which one was worst.
-
-### Open issues
-
-- (specs not met yet, things left to check)
+Target specs (with source), sizing method, device table, results against the targets, corners checked, open issues.

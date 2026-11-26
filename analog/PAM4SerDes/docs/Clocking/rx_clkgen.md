@@ -10,13 +10,9 @@
 
 ## Architecture
 
-`rx_clkgen` is the receiver's clock tree. It takes the 14 GHz clock recovered by the CDR and makes every clock the receiver needs: 14, 7 and 3.5 GHz as CML, and 1.75 and 0.875 GHz as CMOS.
+The receiver's clock tree. It takes the 14 GHz clock recovered by the CDR and makes every clock the receiver needs: 14, 7 and 3.5 GHz as CML, and 1.75 and 0.875 GHz as CMOS.
 
-The system needs it because the receiver samples at 14 GHz (two phases) and then spreads the data over more and slower wires, one 1:2 demultiplexer level at a time. Each level needs a clock at half the rate of the one before.
-
-### Where it sits
-
-In [rx_top](../Receiver/rx_top.md). Its input `ckin` is the single-ended CMOS output of the VCO in [rx_cdr](rx_cdr.md). Its outputs go to these cells:
+In [rx_top](../Receiver/rx_top.md). Its input `ckin` is the single-ended CMOS output of the VCO in [rx_cdr](rx_cdr.md). Its outputs:
 
 | Clock | Type | Used by |
 |---|---|---|
@@ -40,11 +36,9 @@ The cells form one chain:
 | `u_d1p75` | [div2_tspc](div2_tspc.md) | 3.5 GHz to `clk1p75` |
 | `u_d0p875` | [div2_tspc](div2_tspc.md) | `clk1p75` to `clk0p875` |
 
-Each `div2_tspc` toggles on the falling edge of its input.
-
-Compared with [tx_clkgen](tx_clkgen.md), the CML part reaches one level lower (3.5 GHz is CML here) and there is no phase aligner: the CDR already locks the clock to the data.
-
-The parent passes `rj_scale`; this block uses it to scale the jitter of `clkbuf_cml` (40 fs) and of the two `div2_tspc` (300 fs each), and gives each instance its own seed.
+- Each `div2_tspc` toggles on the falling edge of its input.
+- Compared with [tx_clkgen](tx_clkgen.md), the CML part reaches one level lower (3.5 GHz is CML here) and there is no phase aligner: the CDR already locks the clock to the data.
+- `rj_scale` scales the jitter of `clkbuf_cml` (40 fs) and of the two `div2_tspc` (300 fs each); each instance gets its own seed.
 
 ### Ports
 
@@ -65,8 +59,8 @@ The parent passes `rj_scale`; this block uses it to scale the jitter of `clkbuf_
 
 ## Topology research
 
-This block is wiring only, so there is no circuit to choose or size here. The topology research lives in the pages of its cells: [dcc_cml](dcc_cml.md#topology-research), [clkbuf_cml](clkbuf_cml.md#topology-research), [div2_cml](div2_cml.md#topology-research), [cml2cmos](cml2cmos.md#topology-research), [div2_tspc](div2_tspc.md#topology-research).
+Wiring only. See the cells: [dcc_cml](dcc_cml.md#topology-research), [clkbuf_cml](clkbuf_cml.md#topology-research), [div2_cml](div2_cml.md#topology-research), [cml2cmos](cml2cmos.md#topology-research), [div2_tspc](div2_tspc.md#topology-research).
 
 ## Sizing research
 
-This block is wiring only, so there is no circuit to choose or size here. The sizing research lives in the pages of its cells: [dcc_cml](dcc_cml.md#sizing-research), [clkbuf_cml](clkbuf_cml.md#sizing-research), [div2_cml](div2_cml.md#sizing-research), [cml2cmos](cml2cmos.md#sizing-research), [div2_tspc](div2_tspc.md#sizing-research).
+Wiring only. See the cells: [dcc_cml](dcc_cml.md#sizing-research), [clkbuf_cml](clkbuf_cml.md#sizing-research), [div2_cml](div2_cml.md#sizing-research), [cml2cmos](cml2cmos.md#sizing-research), [div2_tspc](div2_tspc.md#sizing-research).

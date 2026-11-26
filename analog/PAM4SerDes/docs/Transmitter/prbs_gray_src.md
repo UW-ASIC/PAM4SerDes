@@ -10,29 +10,13 @@
 
 ## Architecture
 
-`prbs_gray_src` is the transmitter's data source. On every rising edge of the word clock it produces the next 64 bits of a PRBS7 sequence, packed as 32 PAM4 symbols.
+The transmitter's PRBS7 data source. On every rising edge of the word clock it puts out the next 64 bits of the sequence, packed as 32 Gray-coded PAM4 symbols.
 
-The system needs it because the transmitter has no data input: this block is what gives the serializer something to send. A PRBS7 sequence looks random but repeats every 127 bits, so a receiver can check what it gets.
+- Sequence: a 7-bit shift register with feedback from bits 6 and 5 (x^7 + x^6 + 1), repeating every 127 bits. It starts, and restarts on reset, in the all-ones state.
+- A symbol takes two successive PRBS bits, `hi` then `lo`, and goes out as (`hi`, `hi` XOR `lo`): MSB wire, then LSB wire. The first symbol of a word is on `gray_out[63:62]`, the last on `gray_out[1:0]`.
+- Going up the levels -3, -1, +1, +3 of [pam4_driver](pam4_driver.md), the PRBS bits (`hi`, `lo`) read 00, 01, 11, 10 and the wires (MSB, LSB) 00, 01, 10, 11.
 
-### How the model works
-
-- The sequence comes from a 7-bit shift register with feedback from bits 6 and 5 (x^7 + x^6 + 1). It starts, and restarts on reset, in the all-ones state.
-- Each symbol takes two successive PRBS bits: `hi` first, then `lo`.
-- Each symbol is put out as the pair (`hi`, `hi` XOR `lo`). This is the **Gray coding**: the first wire of the pair becomes the MSB of the PAM4 symbol and the second the LSB. With it, neighbouring PAM4 levels differ in only one of the two PRBS bits.
-- The first symbol of a word is on `gray_out[63:62]`, the last on `gray_out[1:0]`.
-
-| PRBS bits (`hi`, `lo`) | MSB wire | LSB wire | PAM4 level |
-|---|---|---|---|
-| 0, 0 | 0 | 0 | -3 |
-| 0, 1 | 0 | 1 | -1 |
-| 1, 1 | 1 | 0 | +1 |
-| 1, 0 | 1 | 1 | +3 |
-
-(The level column is what [pam4_driver](pam4_driver.md) does with the two wires.)
-
-### Where it sits
-
-In [tx_top](tx_top.md): clocked by `clk0p875` from [tx_clkgen](../Clocking/tx_clkgen.md), reset by `rst`. [tx_top](tx_top.md) splits the word between the two [tx_ser_ffe_path](tx_ser_ffe_path.md) instances: the odd wires (the MSBs) go to the MSB path, the even wires (the LSBs) to the LSB path.
+In [tx_top](tx_top.md), clocked by `clk0p875` from [tx_clkgen](../Clocking/tx_clkgen.md). The odd wires (MSBs) go to the MSB [tx_ser_ffe_path](tx_ser_ffe_path.md), the even wires (LSBs) to the LSB path.
 
 ### Ports
 
@@ -50,23 +34,15 @@ In [tx_top](tx_top.md): clocked by `clk0p875` from [tx_clkgen](../Clocking/tx_cl
 | `vth` | 0.35 V | Threshold of `clk` and `reset` |
 | `tedge` | 5 ps | Output edge time |
 
-### What the model leaves out
+**Not modelled:** delay other than the edge time, supply pins. After a clock edge with `reset` high the outputs are all 0.
 
-It is a digital block written in Verilog-A: no delay other than the edge time, no supply pins. After a clock edge with `reset` high the outputs are all 0.
-
-Existing testbench for the whole datapath: [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, on ideal clocks).
+**Checked by:** [`test/tb_datapath.sp`](../../test/tb_datapath.sp) (transmitter, flat test channel, receiver, ideal clocks).
 
 ## Topology research
 
-*To be filled in by the owner during the topology-research stage.*
+*To be filled in by the owner.*
 
-The goal of this section is to decide which circuit implements this block, and to write down why, so the next person does not have to redo the search.
-
-### Requirements
-
-What the circuit must do. Start from the [Architecture](#architecture) section above, then add what is missing (supply, load, power, area, noise) and name the source of every number.
-
-Already stated in the model. Parameter defaults are the model's present assumptions, not signed-off specs: confirm or correct each one here.
+Known from the model (defaults are assumptions to confirm):
 
 - PRBS7, polynomial x^7 + x^6 + 1 (`prbs_gray_src.va`, header)
 - 64 PRBS bits per clock, grouped into 32 Gray-coded symbols; the first symbol is on `gray_out[63:62]` (`prbs_gray_src.va`, header)
@@ -75,70 +51,10 @@ Already stated in the model. Parameter defaults are the model's present assumpti
 - Reset: active high, synchronous, back to the all-ones state (`prbs_gray_src.va`, header and code)
 - Output levels CMOS 0 to 0.7 V, edges 5 ps in the model (`prbs_gray_src.va`, parameters `vhi`, `tedge`)
 
-To be added by the owner:
-
-- (add requirements here)
-
-### Candidate topologies
-
-One row per circuit you seriously considered. Two or three good candidates are enough.
-
-| Candidate | Source / reference | Pros | Cons |
-|---|---|---|---|
-| | | | |
-
-### Chosen topology
-
-Which candidate you chose and the reasons, measured against the requirements above. Say what you gave up by not choosing the others.
-
-### Schematic
-
-A schematic or a sketch of the chosen circuit. Name its nodes like the ports in the Architecture section. Put the image file in `analog/PAM4SerDes/docs/img/`, named `prbs_gray_src_<what>.svg` (or `.png`), and reference it from this page as `![prbs_gray_src schematic](../img/prbs_gray_src_<what>.svg)`.
-
-### Open questions
-
-- (questions for the section lead or for neighbouring blocks' owners)
-
-### References
-
-- (papers, textbook sections, earlier designs; give enough detail that someone else can find them)
+To add: missing requirements (supply, load, power, area, noise) with sources; candidate topologies with pros and cons; the choice and the reason; a schematic (`../img/prbs_gray_src_<what>.svg`); open questions; references.
 
 ## Sizing research
 
-*To be filled in by the owner during the sizing-research stage, once the topology is chosen.*
+*To be filled in by the owner once the topology is chosen.*
 
-The goal of this section is to record the device sizes that meet the block's specs, how they were found, and the simulations that show it.
-
-### Target specs
-
-Copy the requirements from the Topology research section and turn each one into a number you can simulate.
-
-| Spec | Target | Source |
-|---|---|---|
-| | | |
-
-### Sizing method
-
-How the sizes were found (hand calculation, gm/Id, sweep), with enough detail that someone else can repeat it.
-
-### Devices
-
-| Device | W/L or fingers | Bias point |
-|---|---|---|
-| | | |
-
-### Simulation results
-
-One row per spec. Name the testbench file so the result can be reproduced.
-
-| Spec | Target | Result | Testbench | Conditions |
-|---|---|---|---|---|
-| | | | | |
-
-### Corners checked
-
-List the process, voltage and temperature corners you simulated, and say which one was worst.
-
-### Open issues
-
-- (specs not met yet, things left to check)
+Target specs (with source), sizing method, device table, results against the targets, corners checked, open issues.
