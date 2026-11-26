@@ -10,3 +10,6 @@ Thumbs.db
 .venv/
 .tools/
 .tmp/
+
+# Composed decks, OSDI devices and logs from `make -C analog/<block>/build/sim link`
+analog/*/build/sim/out/

@@ -51,6 +51,11 @@ module vga(in_p, in_n, vctrl, out_p, out_n);
     linear_gain = pow(10.0, db_gain / 20.0);
     in_diff = (V(in_p)-V(in_n));
 
+    // input resistance, r_in from each side to ground: the CTLE in front drives only
+    // a differential voltage, so without it the common mode of in_p/in_n has no DC path
+    I(in_p) <+ V(in_p) / r_in;
+    I(in_n) <+ V(in_n) / r_in;
+
     filtered_diff = laplace_nd(
     in_diff,
     '{1.0},

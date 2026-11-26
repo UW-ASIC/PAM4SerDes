@@ -1,3 +1,6 @@
+`ifndef PAM4_LOOP_FILTER_RC_VA
+`define PAM4_LOOP_FILTER_RC_VA
+
 `include "constants.vams"
 `include "disciplines.vams"
 
@@ -30,3 +33,5 @@ module loop_filter_rc(vctrl, vss);
     end
 
 endmodule
+
+`endif

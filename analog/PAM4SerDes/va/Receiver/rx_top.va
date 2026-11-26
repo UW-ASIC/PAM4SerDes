@@ -1,0 +1,85 @@
+// Complete receiver datapath. Structural block, wires the cells together and adds no
+// behaviour of its own.
+//
+// rx_p / rx_n -> rx_afe (termination, CTLE, VGA) -> rx_decision (24 slicers, DFE,
+// PAM4 decoders) -> 2 x rx_dec_retime (one per phase) -> 2 x rx_deser_path (MSB and
+// LSB paths) -> rxd_m / rxd_l, two 32-bit words per clk0p875 cycle.
+// ckin (single-ended CMOS 14 GHz, from rx_cdr's VCO) -> rx_clkgen -> clock tree.
+//
+// afe_p / afe_n and clk14_p / clk14_n go back out to rx_cdr's phase detector.
+//
+// Phases: phase 0 is sampled on clk14 rising and decided on clk14 falling, so it is
+// retimed on the next rising edge. Phase 1 is half a period later, so its retimer's
+// clock is connected swapped (falling edge).
+// The deserializer's first stage samples just after clk14 rising (clk7 toggles there).
+// At that moment the phase-1 retimer still holds the symbol before the one the phase-0
+// retimer has just taken, so phase 1 is the earlier of each pair: it goes to the
+// deserializer's d0 (first in time) and phase 0 to d1.
+// Word order: rxd_m[j] / rxd_l[j] hold the MSB / LSB of time slot j, slot 0 received
+// first. Both words change on clk0p875 rising; read them on its falling edge.
+// The decoded bits are binary (Gray decoded): rxd_m = the PRBS bit sent on the MSB
+// wire, rxd_l = the bit prbs_gray_src XORed into the LSB wire.
+//
+// rx_dec_retime takes its levels as parameters, set here for the 0.7 V supply, and so
+// does the CMOS side of rx_deser_path. The CML demuxes inside rx_deser_path keep their
+// own default levels (around 0.85 V); every cell that reads them reads the difference.
+
+`ifndef PAM4_RX_TOP_VA
+`define PAM4_RX_TOP_VA
+
+`include "disciplines.vams"
+`include "rx_afe.va"
+`include "../Clocking/rx_clkgen.va"
+`include "rx_decision.va"
+`include "rx_dec_retime.va"
+`include "rx_deser_path.va"
+
+module rx_top(rx_p, rx_n, vtt, vctrl, ckin, rst, afe_p, afe_n, clk14_p, clk14_n,
+              rxd_m, rxd_l, clk0p875, vdd, vss);
+  inout rx_p, rx_n, vtt;
+  input vctrl, ckin, rst;
+  output afe_p, afe_n, clk14_p, clk14_n, clk0p875;
+  output [0:31] rxd_m, rxd_l;
+  inout vdd, vss;
+  electrical rx_p, rx_n, vtt, vctrl, ckin, rst, afe_p, afe_n, clk14_p, clk14_n, clk0p875, vdd, vss;
+  electrical [0:31] rxd_m, rxd_l;
+
+  electrical clk7_p, clk7_n, clk3p5_p, clk3p5_n, clk1p75;
+  electrical msb0, lsb0, msb1, lsb1;                       // decoded, CMOS levels, per phase
+  electrical m0_p, m0_n, l0_p, l0_n, m1_p, m1_n, l1_p, l1_n; // retimed, CML
+
+  (* desc = "supply the CML and logic levels follow", units = "V" *)
+  parameter real vdd_nom = 0.7 from (0:inf);
+  (* desc = "CTLE main peaking boost (asymptotic HF/DC)", units = "dB" *)
+  parameter real main_boost_db = 0.0 from [0:30];
+  (* desc = "DFE tap: first post-cursor / main cursor" *)
+  parameter real alpha = 0.08548;
+  (* desc = "scale of the added jitter of the clocking team's cells: 1 = defaults, 0 = none" *)
+  parameter real rj_scale = 1 from [0:10];
+
+  rx_afe #(.main_boost_db(main_boost_db)) u_afe(.rx_p(rx_p), .rx_n(rx_n), .vtt(vtt), .vctrl(vctrl), .out_p(afe_p), .out_n(afe_n));
+
+  rx_clkgen #(.rj_scale(rj_scale)) u_cg(.ckin(ckin), .rst(rst), .clk14_p(clk14_p), .clk14_n(clk14_n),
+    .clk7_p(clk7_p), .clk7_n(clk7_n), .clk3p5_p(clk3p5_p), .clk3p5_n(clk3p5_n),
+    .clk1p75(clk1p75), .clk0p875(clk0p875), .vdd(vdd), .vss(vss));
+
+  rx_decision #(.vdd(vdd_nom), .alpha(alpha)) u_dec(.vinp(afe_p), .vinn(afe_n), .clk_p(clk14_p), .clk_n(clk14_n),
+    .msb0(msb0), .lsb0(lsb0), .msb1(msb1), .lsb1(lsb1));
+
+  rx_dec_retime #(.vth_data(0.5 * vdd_nom), .vdd(vdd_nom)) u_rt0(.msb_in(msb0), .lsb_in(lsb0),
+    .clk_p(clk14_p), .clk_n(clk14_n),
+    .msb_out_p(m0_p), .msb_out_n(m0_n), .lsb_out_p(l0_p), .lsb_out_n(l0_n));
+  // phase 1: falling edge, clock connected swapped
+  rx_dec_retime #(.vth_data(0.5 * vdd_nom), .vdd(vdd_nom)) u_rt1(.msb_in(msb1), .lsb_in(lsb1),
+    .clk_p(clk14_n), .clk_n(clk14_p),
+    .msb_out_p(m1_p), .msb_out_n(m1_n), .lsb_out_p(l1_p), .lsb_out_n(l1_n));
+
+  rx_deser_path #(.vdd_cmos(vdd_nom)) u_des_m(.d0_p(m1_p), .d0_n(m1_n), .d1_p(m0_p), .d1_n(m0_n),
+    .clk7_p(clk7_p), .clk7_n(clk7_n), .clk3p5_p(clk3p5_p), .clk3p5_n(clk3p5_n),
+    .clk1p75(clk1p75), .clk875(clk0p875), .word_clk(clk0p875), .data_out(rxd_m));
+  rx_deser_path #(.vdd_cmos(vdd_nom)) u_des_l(.d0_p(l1_p), .d0_n(l1_n), .d1_p(l0_p), .d1_n(l0_n),
+    .clk7_p(clk7_p), .clk7_n(clk7_n), .clk3p5_p(clk3p5_p), .clk3p5_n(clk3p5_n),
+    .clk1p75(clk1p75), .clk875(clk0p875), .word_clk(clk0p875), .data_out(rxd_l));
+endmodule
+
+`endif

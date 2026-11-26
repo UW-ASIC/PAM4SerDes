@@ -1,3 +1,6 @@
+`ifndef PAM4_CML2CMOS_VA
+`define PAM4_CML2CMOS_VA
+
 `include "constants.vams"
 `include "disciplines.vams"
 
@@ -32,3 +35,5 @@ module cml2cmos(inp, inn, out, vdd, vss);
     end
 
 endmodule
+
+`endif

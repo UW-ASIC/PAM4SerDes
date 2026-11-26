@@ -1,0 +1,149 @@
+// Transmitter serializer and FFE tap generation, one binary path (instantiated twice in
+// tx_top: MSB path and LSB path). Structural block, wires the cells together and adds
+// no behaviour of its own.
+//
+//   L0   dff_cmos_x32       32 x 0.875 Gb/s  retime on clk0p875 rising
+//   L1   16 x mux2_cmos  -> 16 x 1.75 Gb/s   select clk0p875
+//   L2    8 x mux2_cmos  ->  8 x 3.5 Gb/s    select clk1p75
+//   R    dff_tspc_x8                         retime on clk3p5 rising
+//   L3    4 x mux2_cs    ->  4 x 7 Gb/s      select clk3p5, CMOS in, CML out
+//   R    cml_dff_x4                          retime on clk7 rising
+//   L4    2 x mux2_cml_hr -> E, O at 14 Gb/s select clk7
+//   TG   ffe_tapgen_hr   -> pre / main / post, even and odd, at 14 Gb/s (clk14)
+//   FIN   3 x mux2_cml_hr -> pre = x[n], main = x[n-1], post = x[n-2] at 28 Gb/s (clk14)
+//
+// Lane order: d[j] carries time slot j of the 32-symbol word, d[0] is sent first.
+// Every level keeps that order: output k of a level muxes input k (first) with input
+// k + N/2 (second). Which mux input goes first depends on the cell:
+//   - L1: the word changes on clk0p875 rising, so the mux sits on in1 first. Slot k
+//     goes to in1 and slot k + 16 to in0.
+//   - L2: L1's outputs change just after clk1p75 falls (clk0p875 toggles on that edge),
+//     so the mux sits on in0 first.
+//   - L3 (mux2_cs) and L4 / FIN (mux2_cml_hr) send in0 / de first.
+//
+// dff_cmos_x32 and cml_dff_x4 take their levels as parameters, set here for the 0.7 V
+// core supply and the 0.6 Vppd CML of the other cells.
+// mux2_cs is an ideal placeholder (placeholders/mux2_cs.va): nobody owns it yet.
+// pa_p / pa_n: retimed 7 Gb/s lane 0, the data tx_clkgen's phase_aligner locks to.
+
+`ifndef PAM4_TX_SER_FFE_PATH_VA
+`define PAM4_TX_SER_FFE_PATH_VA
+
+`include "disciplines.vams"
+`include "../Clocking/dff_cmos_x32.va"
+`include "../Clocking/dff_tspc_x8.va"
+`include "../Clocking/cml_dff_x4.va"
+`include "mux2_cmos.va"
+`include "placeholders/mux2_cs.va"
+`include "mux2_cml_hr.va"
+`include "ffe_tapgen_hr.va"
+
+module tx_ser_ffe_path(d, clk0p875, clk1p75, clk3p5, clk3p5b, clk7_p, clk7_n,
+                       clk14_p, clk14_n, rst, pre_p, pre_n, main_p, main_n,
+                       post_p, post_n, pa_p, pa_n, vdd, vss);
+  input [31:0] d;
+  input clk0p875, clk1p75, clk3p5, clk3p5b, clk7_p, clk7_n, clk14_p, clk14_n, rst;
+  output pre_p, pre_n, main_p, main_n, post_p, post_n, pa_p, pa_n;
+  inout vdd, vss;
+  electrical [31:0] d;
+  electrical clk0p875, clk1p75, clk3p5, clk3p5b, clk7_p, clk7_n, clk14_p, clk14_n, rst;
+  electrical pre_p, pre_n, main_p, main_n, post_p, post_n, pa_p, pa_n, vdd, vss;
+
+  electrical [31:0] r;                    // L0 retimed word
+  electrical [15:0] o1;                   // L1 out, 1.75 Gb/s
+  electrical [7:0] o2, r2;                // L2 out and its retimed copy, 3.5 Gb/s
+  electrical [3:0] o3p, o3n;              // L3 out, 7 Gb/s CML
+  electrical [3:1] r3p, r3n;              // its retimed copy; lane 0 is pa_p / pa_n
+  electrical e_p, e_n, o_p, o_n;          // even and odd streams, 14 Gb/s
+  electrical pre_e_p, pre_e_n, pre_o_p, pre_o_n;
+  electrical main_e_p, main_e_n, main_o_p, main_o_n;
+  electrical post_e_p, post_e_n, post_o_p, post_o_n;
+
+  (* desc = "CMOS logic high level, the core supply", units = "V" *)
+  parameter real vdd_cmos = 0.7 from (0:inf);
+  (* desc = "CML common mode, vdd - 0.15 V like clkbuf_cml", units = "V" *)
+  parameter real vcm_cml = 0.55;
+  (* desc = "CML differential amplitude, half of Vppd", units = "V" *)
+  parameter real vsw_cml = 0.3 from (0:inf);
+  (* desc = "scale of the added jitter of the clocking team's cells: 1 = defaults, 0 = none" *)
+  parameter real rj_scale = 1 from [0:10];
+
+  // L0: input retimer
+  dff_cmos_x32 #(.vth_clk(0.5 * vdd_cmos), .vth_data(0.5 * vdd_cmos), .vhigh(vdd_cmos),
+                 .t_rise(20p), .t_fall(20p))
+    u_rin(.clk(clk0p875),
+      .d0(d[0]), .d1(d[1]), .d2(d[2]), .d3(d[3]), .d4(d[4]), .d5(d[5]), .d6(d[6]), .d7(d[7]),
+      .d8(d[8]), .d9(d[9]), .d10(d[10]), .d11(d[11]), .d12(d[12]), .d13(d[13]), .d14(d[14]), .d15(d[15]),
+      .d16(d[16]), .d17(d[17]), .d18(d[18]), .d19(d[19]), .d20(d[20]), .d21(d[21]), .d22(d[22]), .d23(d[23]),
+      .d24(d[24]), .d25(d[25]), .d26(d[26]), .d27(d[27]), .d28(d[28]), .d29(d[29]), .d30(d[30]), .d31(d[31]),
+      .q0(r[0]), .q1(r[1]), .q2(r[2]), .q3(r[3]), .q4(r[4]), .q5(r[5]), .q6(r[6]), .q7(r[7]),
+      .q8(r[8]), .q9(r[9]), .q10(r[10]), .q11(r[11]), .q12(r[12]), .q13(r[13]), .q14(r[14]), .q15(r[15]),
+      .q16(r[16]), .q17(r[17]), .q18(r[18]), .q19(r[19]), .q20(r[20]), .q21(r[21]), .q22(r[22]), .q23(r[23]),
+      .q24(r[24]), .q25(r[25]), .q26(r[26]), .q27(r[27]), .q28(r[28]), .q29(r[29]), .q30(r[30]), .q31(r[31]));
+
+  // L1: 32 -> 16. in1 is sent first (see the lane order note above).
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_0(.in0(r[16]), .in1(r[0]), .sel(clk0p875), .out(o1[0]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_1(.in0(r[17]), .in1(r[1]), .sel(clk0p875), .out(o1[1]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_2(.in0(r[18]), .in1(r[2]), .sel(clk0p875), .out(o1[2]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_3(.in0(r[19]), .in1(r[3]), .sel(clk0p875), .out(o1[3]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_4(.in0(r[20]), .in1(r[4]), .sel(clk0p875), .out(o1[4]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_5(.in0(r[21]), .in1(r[5]), .sel(clk0p875), .out(o1[5]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_6(.in0(r[22]), .in1(r[6]), .sel(clk0p875), .out(o1[6]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_7(.in0(r[23]), .in1(r[7]), .sel(clk0p875), .out(o1[7]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_8(.in0(r[24]), .in1(r[8]), .sel(clk0p875), .out(o1[8]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_9(.in0(r[25]), .in1(r[9]), .sel(clk0p875), .out(o1[9]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_10(.in0(r[26]), .in1(r[10]), .sel(clk0p875), .out(o1[10]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_11(.in0(r[27]), .in1(r[11]), .sel(clk0p875), .out(o1[11]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_12(.in0(r[28]), .in1(r[12]), .sel(clk0p875), .out(o1[12]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_13(.in0(r[29]), .in1(r[13]), .sel(clk0p875), .out(o1[13]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_14(.in0(r[30]), .in1(r[14]), .sel(clk0p875), .out(o1[14]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l1_15(.in0(r[31]), .in1(r[15]), .sel(clk0p875), .out(o1[15]));
+
+  // L2: 16 -> 8. in0 is sent first.
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_0(.in0(o1[0]), .in1(o1[8]), .sel(clk1p75), .out(o2[0]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_1(.in0(o1[1]), .in1(o1[9]), .sel(clk1p75), .out(o2[1]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_2(.in0(o1[2]), .in1(o1[10]), .sel(clk1p75), .out(o2[2]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_3(.in0(o1[3]), .in1(o1[11]), .sel(clk1p75), .out(o2[3]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_4(.in0(o1[4]), .in1(o1[12]), .sel(clk1p75), .out(o2[4]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_5(.in0(o1[5]), .in1(o1[13]), .sel(clk1p75), .out(o2[5]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_6(.in0(o1[6]), .in1(o1[14]), .sel(clk1p75), .out(o2[6]));
+  mux2_cmos #(.vth(0.5 * vdd_cmos)) u_l2_7(.in0(o1[7]), .in1(o1[15]), .sel(clk1p75), .out(o2[7]));
+
+  dff_tspc_x8 #(.rj(200f * rj_scale)) u_rcs(.clk(clk3p5), .d(o2), .q(r2), .vdd(vdd), .vss(vss));
+
+  // L3: 8 -> 4, CMOS to CML. in0 is sent first.
+  mux2_cs #(.vsw(vsw_cml)) u_l3_0(.in0(r2[0]), .in1(r2[4]), .clk(clk3p5), .clkb(clk3p5b), .outp(o3p[0]), .outn(o3n[0]), .vdd(vdd), .vss(vss));
+  mux2_cs #(.vsw(vsw_cml)) u_l3_1(.in0(r2[1]), .in1(r2[5]), .clk(clk3p5), .clkb(clk3p5b), .outp(o3p[1]), .outn(o3n[1]), .vdd(vdd), .vss(vss));
+  mux2_cs #(.vsw(vsw_cml)) u_l3_2(.in0(r2[2]), .in1(r2[6]), .clk(clk3p5), .clkb(clk3p5b), .outp(o3p[2]), .outn(o3n[2]), .vdd(vdd), .vss(vss));
+  mux2_cs #(.vsw(vsw_cml)) u_l3_3(.in0(r2[3]), .in1(r2[7]), .clk(clk3p5), .clkb(clk3p5b), .outp(o3p[3]), .outn(o3n[3]), .vdd(vdd), .vss(vss));
+
+  cml_dff_x4 #(.vcm(vcm_cml), .vdiff(vsw_cml), .t_rise(5p), .t_fall(5p))
+    u_rcml(.clk_p(clk7_p), .clk_n(clk7_n),
+      .d0_p(o3p[0]), .d0_n(o3n[0]), .d1_p(o3p[1]), .d1_n(o3n[1]),
+      .d2_p(o3p[2]), .d2_n(o3n[2]), .d3_p(o3p[3]), .d3_n(o3n[3]),
+      .q0_p(pa_p), .q0_n(pa_n), .q1_p(r3p[1]), .q1_n(r3n[1]),
+      .q2_p(r3p[2]), .q2_n(r3n[2]), .q3_p(r3p[3]), .q3_n(r3n[3]));
+
+  // L4: 4 -> 2. Even stream = slots 0 and 2, odd stream = slots 1 and 3.
+  mux2_cml_hr u_l4e(.de_p(pa_p), .de_n(pa_n), .do_p(r3p[2]), .do_n(r3n[2]),
+                    .clk_p(clk7_p), .clk_n(clk7_n), .out_p(e_p), .out_n(e_n), .vdd(vdd), .vss(vss));
+  mux2_cml_hr u_l4o(.de_p(r3p[1]), .de_n(r3n[1]), .do_p(r3p[3]), .do_n(r3n[3]),
+                    .clk_p(clk7_p), .clk_n(clk7_n), .out_p(o_p), .out_n(o_n), .vdd(vdd), .vss(vss));
+
+  ffe_tapgen_hr u_tg(.de_p(e_p), .de_n(e_n), .do_p(o_p), .do_n(o_n),
+                     .clk_p(clk14_p), .clk_n(clk14_n), .rst(rst),
+                     .pre_e_p(pre_e_p), .pre_e_n(pre_e_n), .pre_o_p(pre_o_p), .pre_o_n(pre_o_n),
+                     .main_e_p(main_e_p), .main_e_n(main_e_n), .main_o_p(main_o_p), .main_o_n(main_o_n),
+                     .post_e_p(post_e_p), .post_e_n(post_e_n), .post_o_p(post_o_p), .post_o_n(post_o_n),
+                     .vdd(vdd), .vss(vss));
+
+  // FIN: one 2:1 per tap, 14 -> 28 Gb/s
+  mux2_cml_hr u_fin_pre(.de_p(pre_e_p), .de_n(pre_e_n), .do_p(pre_o_p), .do_n(pre_o_n),
+                        .clk_p(clk14_p), .clk_n(clk14_n), .out_p(pre_p), .out_n(pre_n), .vdd(vdd), .vss(vss));
+  mux2_cml_hr u_fin_main(.de_p(main_e_p), .de_n(main_e_n), .do_p(main_o_p), .do_n(main_o_n),
+                         .clk_p(clk14_p), .clk_n(clk14_n), .out_p(main_p), .out_n(main_n), .vdd(vdd), .vss(vss));
+  mux2_cml_hr u_fin_post(.de_p(post_e_p), .de_n(post_e_n), .do_p(post_o_p), .do_n(post_o_n),
+                         .clk_p(clk14_p), .clk_n(clk14_n), .out_p(post_p), .out_n(post_n), .vdd(vdd), .vss(vss));
+endmodule
+
+`endif

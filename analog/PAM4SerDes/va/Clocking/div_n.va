@@ -1,3 +1,6 @@
+`ifndef PAM4_DIV_N_VA
+`define PAM4_DIV_N_VA
+
 // divide-by-N, the TX PLL feedback divide. Divides 14 GHz from VCO by n = 32 down
 // to 437.5 MHz reference rate. Two instances, one at TX, one at RX.
 // Single-ended input (the VCO drives one rail-to-rail wire): the input is
@@ -143,3 +146,5 @@ module div_n(ckin, ckout, vdd, vss);
       V(drv, ckout) <+ 0;
   end
 endmodule
+
+`endif

@@ -1,0 +1,23 @@
+// Ideal glue cell: differential to single-ended, V(out, vss) = V(p, n). It stands for
+// wiring, so it adds no non-ideal behaviour.
+// cdr_pd_linear (in rx_cdr) and phase_aligner (in tx_clkgen, fed from tx_top) read
+// single-ended signals around 0 V; the data and clocks they watch are differential.
+// Moved out of cdr_glue.va unchanged, so tx_top can include it without the other glue
+// cells: VerA compiles the first module nobody instantiates, and tx_top does not use
+// qdelay or nor2.
+
+`ifndef PAM4_DIFF2SE_VA
+`define PAM4_DIFF2SE_VA
+
+`include "disciplines.vams"
+
+module diff2se(p, n, out, vss);
+  input p, n;
+  output out;
+  inout vss;
+  electrical p, n, out, vss;
+  analog
+    V(out, vss) <+ V(p, n);
+endmodule
+
+`endif

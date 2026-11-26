@@ -1,0 +1,52 @@
+// PLACEHOLDER, not a team block. Ideal charge-steering 2:1 mux so tx_ser_ffe_path
+// compiles and simulates until an owner commits the real one.
+//
+// Serializer level L3: 8 x 3.5 Gb/s CMOS lanes in, 4 x 7 Gb/s CML lanes out.
+// Latch-mux: both inputs are captured on the rising clock edge; the output shows in0
+// while the clock is high and in1 while it is low, so in0 is transmitted first.
+// Inputs and clock are CMOS (threshold at half the supply). Output levels match
+// clkbuf_cml and placeholders/div2_cml: each side vdd - vsw/2 +/- vsw/2.
+// clkb is the complementary clock a real charge-steering cell needs; the ideal model
+// does not read it.
+
+`ifndef PAM4_MUX2_CS_VA
+`define PAM4_MUX2_CS_VA
+
+`include "disciplines.vams"
+
+module mux2_cs(in0, in1, clk, clkb, outp, outn, vdd, vss);
+  input in0, in1, clk, clkb;
+  output outp, outn;
+  inout vdd, vss;
+  electrical in0, in1, clk, clkb, outp, outn, vdd, vss;
+
+  (* desc = "differential output amplitude, half of Vppd", units = "V" *)
+  parameter real vsw = 0.3 from (0:inf);
+  (* desc = "output edge duration", units = "s" *)
+  parameter real trf = 10p from (0:1n);
+  (* desc = "clock edge to output zero crossing delay, at least trf/2", units = "s" *)
+  parameter real tpd = 40p from [trf/2:1n];
+
+  integer s0, s1, y;
+  real vth;
+
+  analog begin
+    vth = 0.5 * V(vdd, vss);
+    @(initial_step) begin
+      s0 = 0;
+      s1 = 0;
+      y = -1;
+    end
+    @(cross(V(clk, vss) - vth, +1)) begin
+      s0 = (V(in0, vss) > vth) ? 1 : -1;
+      s1 = (V(in1, vss) > vth) ? 1 : -1;
+      y = s0;
+    end
+    @(cross(V(clk, vss) - vth, -1))
+      y = s1;
+    V(outp, vss) <+ V(vdd, vss) - 0.5 * vsw + 0.5 * vsw * transition(y, tpd - 0.5 * trf, trf);
+    V(outn, vss) <+ V(vdd, vss) - 0.5 * vsw - 0.5 * vsw * transition(y, tpd - 0.5 * trf, trf);
+  end
+endmodule
+
+`endif

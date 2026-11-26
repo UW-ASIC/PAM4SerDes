@@ -1,3 +1,6 @@
+`ifndef PAM4_DIV2_TSPC_VA
+`define PAM4_DIV2_TSPC_VA
+
 // Divide-by-2 in true single-phase clock (TSPC) logic. Goes to clock trees for
 // the mux/demux trees. Converts 7 Ghz to 3.5, 1.75 and 0.875 GHz
 
@@ -122,3 +125,5 @@ module div2_tspc(clk, rst, q, qb, vdd, vss);
     end
   end
 endmodule
+
+`endif

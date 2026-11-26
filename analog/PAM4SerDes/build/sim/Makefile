@@ -19,7 +19,23 @@ endif
 TEST_DIR = ../../test
 VA_OSDI_DIR = ../va/osdi
 
-.PHONY: all sim test list clean
+# The Verilog-A hierarchy on ngspice.
+#
+# VerA builds one .va file into one OSDI device and caps a device at 255 unknowns, so the
+# transmitter, the receiver and the top level cannot each be a device. `make deck` runs
+# .flows/tools/va_deck.py, which turns every purely structural module into a .subckt and
+# every other module into a device: out/$(VA_TOP).cir plus out/osdi/*.osdi. The .va files
+# stay the only source. `make link` then runs the ngspice decks in ../../test/ that
+# include that file and prints one PASS or FAIL line per deck; full logs go to out/.
+#
+#   make link                      every deck in LINK_DECKS
+#   make link DECK=tb_datapath     one of them
+VA_TOP ?= pam4_serdes
+VA_ALSO = $(TEST_DIR)/prbs_chk.va
+LINK_DECKS = tx_driver_test tb_datapath tb_cdr
+DECK ?= $(LINK_DECKS)
+
+.PHONY: all sim test list clean deck link
 
 all: sim
 
@@ -39,6 +55,26 @@ test:
 		echo "A testbench is a .py that builds a circuit and runs an analysis."; \
 	fi
 
+## deck - compose ../../va/$(VA_TOP).va into out/$(VA_TOP).cir and build its devices
+deck:
+	@python3 ../../../../.flows/tools/va_deck.py ../../va/$(VA_TOP).va --also $(VA_ALSO) -o out/$(VA_TOP).cir
+
+## link - run the hierarchy decks on ngspice (DECK=name for one of them)
+link: deck
+	@v=$$(ngspice --version 2>/dev/null | grep -oE 'ngspice-[0-9]+' | head -1 | cut -d- -f2); \
+	if [ "$${v:-0}" -lt 45 ]; then \
+		echo "ngspice 45 or newer is needed (found: $${v:-none}): 44 cannot place OSDI devices with more than 18 pins."; \
+		exit 1; \
+	fi
+	@rc=0; for d in $(DECK); do \
+		log=$$(pwd)/out/$$d.log; \
+		(cd $(TEST_DIR) && ngspice -b $$d.sp) > $$log 2>&1; \
+		if grep -q '^PASS' $$log; then grep '^PASS' $$log; \
+		else rc=1; grep -E '^FAIL' $$log || echo "FAIL $$d: no verdict, see $$log"; \
+			grep -E 'Timestep too small|^Error' $$log | cut -c1-160 | head -3; \
+		fi; \
+	done; exit $$rc
+
 ## list - which simulators this environment can actually reach
 list:
 	@echo "BACKEND = $(BACKEND)"
@@ -50,5 +86,5 @@ list:
 		|| echo "  spicerack: not importable — re-enter ./env.sh"
 
 clean:
-	@rm -rf __pycache__ $(TEST_DIR)/__pycache__ *.raw *.log
+	@rm -rf __pycache__ $(TEST_DIR)/__pycache__ *.raw *.log out
 	@echo "Clean complete"
