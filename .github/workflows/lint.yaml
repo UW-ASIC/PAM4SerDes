@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true  # ponytail: AnalogLibrary has a broken nested gitlink, recurse once it is fixed
       
       - name: Find digital modules
         id: find-modules
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true  # ponytail: AnalogLibrary has a broken nested gitlink, recurse once it is fixed
       
       - name: Install Verilator
         shell: bash
