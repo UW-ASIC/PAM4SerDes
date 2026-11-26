@@ -1,0 +1,33 @@
+// Ideal charge pump. The circuit was scrapped from the design; this block only
+// turns the PFD's up / dn pulses into the loop-filter current, perfectly:
+//   I(into out) = icp * en * (u - d),  u, d, en = V(pin, vss) / V(vdd, vss), clamped to [0, 1]
+// Linear in the input voltages, so rail-to-rail logic gives exactly +icp, -icp or 0:
+// no threshold, delay, current mismatch, leakage, or output compliance limit.
+// en low switches the pump off (RX: FLL off after lock). Tie en to vdd for always on.
+
+`ifndef PAM4_CHARGE_PUMP_VA
+`define PAM4_CHARGE_PUMP_VA
+
+`include "disciplines.vams"
+
+module charge_pump(up, dn, en, out, vdd, vss);
+  input up, dn, en;
+  output out;
+  inout vdd, vss;
+  electrical up, dn, en, out, vdd, vss;
+
+  (* desc = "pump current", units = "A" *)
+  parameter real icp = 100u from (0:inf);
+
+  real vs, u, d, e;
+
+  analog begin
+    vs = V(vdd, vss);
+    u = min(max(V(up, vss) / vs, 0.0), 1.0);
+    d = min(max(V(dn, vss) / vs, 0.0), 1.0);
+    e = min(max(V(en, vss) / vs, 0.0), 1.0);
+    I(vss, out) <+ icp * e * (u - d);
+  end
+endmodule
+
+`endif

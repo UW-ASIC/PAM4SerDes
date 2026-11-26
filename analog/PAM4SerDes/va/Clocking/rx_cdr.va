@@ -1,0 +1,100 @@
+// Receiver clock and data recovery skeleton. Structural block, wires the loop's
+// cells together and adds no behaviour of its own (cdr_glue cells are ideal wiring),
+// apart from vctl's start-up hold and C2.
+//
+// One loop filter and VCO, two detectors (Detailed.png, specs.md):
+//  - FLL acquisition: pfd + ideal charge_pump (400 uA) against ckref / 32. The pump
+//    is enabled while en = !(lock | force_lock); force_lock skips the FLL.
+//  - CDR tracking: cdr_pd_linear compares the AFE data with clk14 (from rx_clkgen)
+//    and injects its current into the same vctl node.
+// Loop filter: R 2.352 k, C 20 p, C2 1 p; 16.8 MHz CDR bandwidth, zeta = 1. The
+// team's loop_filter_rc is R + C only, so C2 (vctl to vss) is added here.
+//
+// cdr_pd_linear reads single-ended signals around 0 V and needs a quadrature
+// clock, which Detailed.png does not have: din and clk14 go through ideal
+// diff2se cells and clk14_Q is clk14 delayed a quarter period (qdelay).
+// ck is the single-ended CMOS VCO output (to rx_clkgen); ckfb and vctl are monitors.
+// No band[3:0] input: the team's vco has no coarse tuning yet.
+
+`ifndef PAM4_RX_CDR_VA
+`define PAM4_RX_CDR_VA
+
+`include "disciplines.vams"
+`include "pfd.va"
+`include "charge_pump.va"
+`include "loop_filter_rc.va"
+`include "vco.va"
+`include "div_n.va"
+`include "lock_detect.va"
+`include "cdr_pd_linear.va"
+`include "cdr_glue.va"
+
+module rx_cdr(ckref, din_p, din_n, clk14_p, clk14_n, force_lock,
+              ck, ckfb, lock, vctl, vdd, vss);
+  input ckref, din_p, din_n, clk14_p, clk14_n, force_lock;
+  output ck, ckfb, lock, vctl;
+  inout vdd, vss;
+  electrical ckref, din_p, din_n, clk14_p, clk14_n, force_lock;
+  electrical ck, ckfb, lock, vctl, vdd, vss;
+  electrical up, dn, cp_en, din_se, clk_i, clk_q;
+
+  (* desc = "feedback division ratio" *)
+  parameter integer n = 32 from [2:1023];
+  (* desc = "FLL charge pump current", units = "A" *)
+  parameter real icp = 400u from (0:inf);
+  (* desc = "loop filter resistor", units = "Ohm" *)
+  parameter real r = 2.352k from (0:inf);
+  (* desc = "loop filter integrating capacitor", units = "F" *)
+  parameter real c = 20p from (0:inf);
+  (* desc = "loop filter shunt capacitor, vctl to vss", units = "F" *)
+  parameter real c2 = 1p from [0:inf);
+  (* desc = "vctl at the start of the transient (DC operating point)", units = "V" *)
+  parameter real vc0 = 0.35;
+  (* desc = "VCO frequency at vctl = vctl0", units = "Hz" *)
+  parameter real f0 = 14G from (0:inf);
+  (* desc = "control voltage that gives f0", units = "V" *)
+  parameter real vctl0 = 0.35;
+  (* desc = "VCO tuning gain", units = "Hz/V" *)
+  parameter real kvco = 1.4G from [0:inf);
+  (* desc = "PFD input threshold", units = "V" *)
+  parameter real vth = 0.35;
+  (* desc = "quadrature delay for cdr_pd_linear's clk14_Q", units = "s" *)
+  parameter real tq = 17.857p from (0:1n);
+  (* desc = "feedback divider's added jitter, rms per edge", units = "s" *)
+  parameter real rj_div = 150f from [0:10p];
+  (* desc = "seed of the divider's jitter sequence" *)
+  parameter integer div_seed = 12;
+  (* desc = "good cycles the lock detector needs" *)
+  parameter integer n_lock = 256 from [1:inf);
+
+  // FLL acquisition
+  pfd #(.vth(vth)) u_pfd(.ref(ckref), .fb(ckfb), .up(up), .dn(dn), .vdd(vdd), .gnd(vss));
+  nor2 u_en(.a(lock), .b(force_lock), .y(cp_en), .vdd(vdd), .vss(vss));
+  charge_pump #(.icp(icp)) u_cp(.up(up), .dn(dn), .en(cp_en), .out(vctl), .vdd(vdd), .vss(vss));
+  lock_detect #(.n_lock(n_lock)) u_lock(.ckref(ckref), .ckfb(ckfb), .lock(lock), .vdd(vdd), .vss(vss));
+
+  // Shared loop filter, VCO and divider
+  loop_filter_rc #(.R(r), .C(c)) u_lf(.vctrl(vctl), .vss(vss));
+  vco #(.f_0(f0), .v_c0(vctl0), .k_vco(kvco)) u_vco(.v_ctrl(vctl), .v_out(ck), .vdd(vdd), .gnd(vss));
+  div_n #(.n(n), .rj(rj_div), .rj_seed(div_seed)) u_div(.ckin(ck), .ckout(ckfb), .vdd(vdd), .vss(vss));
+
+  // CDR phase detector
+  diff2se u_dse(.p(din_p), .n(din_n), .out(din_se), .vss(vss));
+  diff2se u_cse(.p(clk14_p), .n(clk14_n), .out(clk_i), .vss(vss));
+  qdelay #(.td(tq)) u_q(.in(clk_i), .out(clk_q), .vss(vss));
+  cdr_pd_linear u_pd(.vout_b(din_se), .clk14_I(clk_i), .clk14_Q(clk_q), .vi_ou(vctl));
+
+  // vctl to vss, ours (the team's loop_filter_rc is R + C only):
+  //  - DC operating point: held at vc0, so the filter's capacitor starts charged
+  //    there and vctl has a DC path.
+  //  - Transient: the loop filter's shunt capacitor C2, which smooths the I*R step
+  //    each detector current pulse puts on vctl.
+  analog begin
+    if (analysis("static"))
+      V(vctl, vss) <+ vc0;
+    else
+      I(vctl, vss) <+ c2 * ddt(V(vctl, vss));
+  end
+endmodule
+
+`endif

@@ -13,19 +13,21 @@
 `include "disciplines.vams"
 
 module vco(v_ctrl, v_out, vdd, gnd);
-    input v_ctrl, vdd, gnd;
+    input v_ctrl;
     output v_out;
-    electrical v_ctrl, v_out;
+    inout vdd, gnd;
+    electrical v_ctrl, v_out, vdd, gnd;
 
     parameter real f_0      = 5e9 from (0:inf); // center frequency
     parameter real v_c0     = 0;                // V_ctrl that gives f_0
     parameter real k_vco    = 2e9;              // gain
     parameter real p_init   = 0;                // initial phase
-    parameter real v_amp    = vdd from [gnd:vdd];   // output peak amplitude
-     parameter real t_rf = 0 from [0:inf);       //output rise/fall time
+    parameter real v_amp    = 0.7 from (0:inf); // output high level above gnd (CMOS 0.7 V)
+    parameter real t_rf     = 2p from (0:inf);  // output rise/fall time; 0 stalls ngspice
 
 
     real frequency, phase;
+    integer high;
 
     analog begin
         frequency = f_0 + k_vco * (V(v_ctrl, gnd) - v_c0);
@@ -42,7 +44,7 @@ module vco(v_ctrl, v_out, vdd, gnd);
         @(cross($sin(phase), -1))
             high = 0;
 
-        V(v_out, gnd) <+ v_amp*transition(, 0, t_rf)
+        V(v_out, gnd) <+ v_amp * transition(high, 0, t_rf);
 
         $bound_step(0.1/frequency);
     end

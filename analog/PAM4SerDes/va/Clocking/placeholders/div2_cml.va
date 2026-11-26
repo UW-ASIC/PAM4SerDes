@@ -1,0 +1,40 @@
+// PLACEHOLDER, not the team's div2_cml. Ideal CML divide-by-2 so tx_clkgen and
+// rx_clkgen compile and simulate until the owner commits the real block.
+//
+// Toggles on every rising zero crossing of V(inp, inn). The output's zero crossing
+// comes tpd after the input's: its linear edge of trf starts tpd - trf/2 after it.
+// Output levels match clkbuf_cml: each side vdd - vsw/2 +/- vsw/2,
+// so V(outp, outn) = +/- vsw (0.6 Vppd by default). Starts with outp low.
+// For a falling-edge divider, connect the input swapped (inp <- clk_n, inn <- clk_p).
+
+`ifndef PAM4_DIV2_CML_VA
+`define PAM4_DIV2_CML_VA
+
+`include "disciplines.vams"
+
+module div2_cml(inp, inn, outp, outn, vdd, vss);
+  input inp, inn;
+  output outp, outn;
+  inout vdd, vss;
+  electrical inp, inn, outp, outn, vdd, vss;
+
+  (* desc = "differential output amplitude, half of Vppd", units = "V" *)
+  parameter real vsw = 0.3 from (0:inf);
+  (* desc = "output edge duration", units = "s" *)
+  parameter real trf = 5p from (0:1n);
+  (* desc = "input zero crossing to output zero crossing delay, at least trf/2", units = "s" *)
+  parameter real tpd = 15p from [trf/2:1n];
+
+  integer q;
+
+  analog begin
+    @(initial_step)
+      q = -1;
+    @(cross(V(inp, inn), +1))
+      q = -q;
+    V(outp, vss) <+ V(vdd, vss) - 0.5 * vsw + 0.5 * vsw * transition(q, tpd - 0.5 * trf, trf);
+    V(outn, vss) <+ V(vdd, vss) - 0.5 * vsw - 0.5 * vsw * transition(q, tpd - 0.5 * trf, trf);
+  end
+endmodule
+
+`endif

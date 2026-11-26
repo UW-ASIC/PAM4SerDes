@@ -1,0 +1,52 @@
+// Receiver analog front end skeleton. Structural block, wires the cells together
+// and adds no behaviour of its own.
+//
+// rx_p / rx_n: pad side, terminated (rterm differential, cesd per side to vtt).
+// vctrl: vga gain control, min_gain_db at vctrl_min to max_gain_db at vctrl_max
+// (0 to 0.7 V, the ASAP7 core supply; vga's own default range is 0 to 1 V).
+// The g[5:0] code is not modelled yet.
+// main_boost_db stands in for bst[3:0] code.
+// out_p / out_n: to the slicers (rx_decision) and to rx_cdr's phase detector,
+// centred at vcm_out = 0.55 V (vdd - 0.15 V, like the other CML; vga's own
+// default of 0.9 V is above the 0.7 V supply).
+
+`ifndef PAM4_RX_AFE_VA
+`define PAM4_RX_AFE_VA
+
+`include "disciplines.vams"
+`include "rx_term.va"
+`include "ctle.va"
+`include "vga.va"
+
+module rx_afe(rx_p, rx_n, vtt, vctrl, out_p, out_n);
+  inout rx_p, rx_n, vtt;
+  input vctrl;
+  output out_p, out_n;
+  electrical rx_p, rx_n, vtt, vctrl, out_p, out_n;
+  electrical ctle_p, ctle_n;
+
+  (* desc = "differential termination", units = "Ohm" *)
+  parameter real rterm = 100 from (0:inf);
+  (* desc = "ESD capacitance per side", units = "F" *)
+  parameter real cesd = 50f from [0:inf);
+  (* desc = "CTLE low-frequency shelf", units = "dB" *)
+  parameter real shelf_db = 1.0 from [0:30];
+  (* desc = "CTLE main peaking boost (asymptotic HF/DC)", units = "dB" *)
+  parameter real main_boost_db = 0.0 from [0:30];
+  (* desc = "vctrl for min_gain_db", units = "V" *)
+  parameter real vctrl_min = 0;
+  (* desc = "vctrl for max_gain_db", units = "V" *)
+  parameter real vctrl_max = 0.7;
+  (* desc = "VGA gain at vctrl = vctrl_min", units = "dB" *)
+  parameter real min_gain_db = -4.703;
+  (* desc = "VGA gain at vctrl = vctrl_max", units = "dB" *)
+  parameter real max_gain_db = -1.847;
+  (* desc = "VGA output common mode", units = "V" *)
+  parameter real vcm_out = 0.55;
+
+  rx_term #(.rterm(rterm), .cesd(cesd)) u_term(.rx_p(rx_p), .rx_n(rx_n), .vref(vtt));
+  ctle #(.shelf_db(shelf_db), .main_boost_db(main_boost_db)) u_ctle(.in_p(rx_p), .in_n(rx_n), .out_p(ctle_p), .out_n(ctle_n));
+  vga #(.min_gain_db(min_gain_db), .max_gain_db(max_gain_db), .v_min(vctrl_min), .v_max(vctrl_max), .common_mode(vcm_out)) u_vga(.in_p(ctle_p), .in_n(ctle_n), .vctrl(vctrl), .out_p(out_p), .out_n(out_n));
+endmodule
+
+`endif

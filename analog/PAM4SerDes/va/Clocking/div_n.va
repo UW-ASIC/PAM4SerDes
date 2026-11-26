@@ -1,18 +1,22 @@
 // divide-by-N, the TX PLL feedback divide. Divides 14 GHz from VCO by n = 32 down
 // to 437.5 MHz reference rate. Two instances, one at TX, one at RX.
+// Single-ended input (the VCO drives one rail-to-rail wire): the input is
+// compared with vth_frac * (vdd - vss) + vos, with hysteresis vhys.
 
 `include "disciplines.vams"
 
-module div_n(ckin_p, ckin_n, ckout, vdd, vss);
-  input ckin_p, ckin_n;
+module div_n(ckin, ckout, vdd, vss);
+  input ckin;
   output ckout;
   inout vdd, vss;
-  electrical ckin_p, ckin_n, ckout, vdd, vss;
+  electrical ckin, ckout, vdd, vss;
   electrical drv; // ideal driver output, behind rout
 
   (* desc = "division ratio" *)
   parameter integer n = 32 from [2:1023];
-  (* desc = "receiver input-referred offset", units = "V" *)
+  (* desc = "input threshold as a fraction of the supply, vdd - vss" *)
+  parameter real vth_frac = 0.5 from (0:1);
+  (* desc = "receiver input-referred offset, added to the threshold", units = "V" *)
   parameter real vos = 0 from [-0.1:0.1];
   (* desc = "receiver hysteresis, full width", units = "V" *)
   parameter real vhys = 10m from [0:0.2];
@@ -35,19 +39,20 @@ module div_n(ckin_p, ckin_n, ckout, vdd, vss);
 
   real te0, te1, te2, te3; // 50 % times of the queued output edges
   real de0, de1, de2, de3; // their directions: +1 rising, -1 falling, 0 empty
-  real vd, th_r, th_f, x_r, x_prev, per, base, y, t_new, d_old, t_old;
+  real vin, vth, th_r, th_f, x_r, x_prev, per, base, y, t_new, d_old, t_old;
   integer st, cnt, lvl_out, wr, seed, n_fast, n_slow, n_cyc;
 
   analog begin
-    vd = V(ckin_p, ckin_n);
-    th_r = vos + 0.5 * vhys;
-    th_f = vos - 0.5 * vhys;
+    vin = V(ckin, vss);
+    vth = vth_frac * V(vdd, vss) + vos;
+    th_r = vth + 0.5 * vhys;
+    th_f = vth - 0.5 * vhys;
 
-    x_r = last_crossing(vd - th_r, +1);
+    x_r = last_crossing(vin - th_r, +1);
 
     @(initial_step) begin
       seed = rj_seed;
-      st = (vd > vos) ? 1 : 0;
+      st = (vin > vth) ? 1 : 0;
       cnt = 0;
       lvl_out = 0;
       base = 0;
@@ -58,7 +63,7 @@ module div_n(ckin_p, ckin_n, ckout, vdd, vss);
     end
 
     // Rising
-    @(above(vd - th_r)) begin
+    @(above(vin - th_r)) begin
       if (st == 0) begin
         st = 1;
         cnt = cnt + 1;
@@ -108,7 +113,7 @@ module div_n(ckin_p, ckin_n, ckout, vdd, vss);
     end
 
     // Falling
-    @(above(th_f - vd))
+    @(above(th_f - vin))
       st = 0;
 
     y = base + de0 * min(max(($abstime - te0) / trf + 0.5, 0.0), 1.0)

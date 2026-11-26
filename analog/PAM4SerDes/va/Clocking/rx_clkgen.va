@@ -1,0 +1,45 @@
+// Receiver clock generator. Structural block, instantiates the clock-tree cells
+// and adds no behaviour of its own.
+//
+// ckin (single-ended CMOS, from rx_cdr's VCO) -> dcc_cml -> clkbuf_cml (clk14 to
+// the 24 slicers, the DFE, the retimers and cdr_pd_linear) -> div2_cml on clk14's
+// rising edge (clk7, CML) -> div2_cml on clk7's falling edge (clk3.5, CML; its input
+// is connected swapped) -> cml2cmos -> two div2_tspc (1.75, 0.875 GHz, CMOS).
+//
+// div2_cml is an ideal placeholder (placeholders/div2_cml.va).
+
+`ifndef PAM4_RX_CLKGEN_VA
+`define PAM4_RX_CLKGEN_VA
+
+`include "disciplines.vams"
+`include "dcc_cml.va"
+`include "clkbuf_cml.va"
+`include "placeholders/div2_cml.va"
+`include "cml2cmos.va"
+`include "div2_tspc.va"
+
+module rx_clkgen(ckin, rst, clk14_p, clk14_n, clk7_p, clk7_n, clk3p5_p, clk3p5_n,
+                 clk1p75, clk0p875, vdd, vss);
+  input ckin, rst;
+  output clk14_p, clk14_n, clk7_p, clk7_n, clk3p5_p, clk3p5_n, clk1p75, clk0p875;
+  inout vdd, vss;
+  electrical ckin, rst, clk14_p, clk14_n, clk7_p, clk7_n, clk3p5_p, clk3p5_n;
+  electrical clk1p75, clk0p875, vdd, vss;
+  electrical dccp, dccn, c3p5, q1p75b, q0p875b;
+
+  (* desc = "dcc_cml input threshold, mid-swing of the CMOS VCO output", units = "V" *)
+  parameter real vth_dcc = 0.35;
+  (* desc = "scale of the added jitter of the clocking team's cells: 1 = defaults, 0 = none" *)
+  parameter real rj_scale = 1 from [0:10];
+
+  dcc_cml #(.vth(vth_dcc)) u_dcc(.clk_in(ckin), .clk_outp(dccp), .clk_outn(dccn), .vss(vss));
+  clkbuf_cml #(.rj(40f * rj_scale), .rj_seed(611)) u_buf14(.inp(dccp), .inn(dccn), .outp(clk14_p), .outn(clk14_n), .vdd(vdd), .vss(vss));
+  div2_cml u_div7(.inp(clk14_p), .inn(clk14_n), .outp(clk7_p), .outn(clk7_n), .vdd(vdd), .vss(vss));
+  // falling edge of clk7: input connected swapped
+  div2_cml u_div3p5(.inp(clk7_n), .inn(clk7_p), .outp(clk3p5_p), .outn(clk3p5_n), .vdd(vdd), .vss(vss));
+  cml2cmos u_c2c(.inp(clk3p5_p), .inn(clk3p5_n), .out(c3p5), .vdd(vdd), .vss(vss));
+  div2_tspc #(.rj(300f * rj_scale), .rj_seed(311)) u_d1p75(.clk(c3p5), .rst(rst), .q(clk1p75), .qb(q1p75b), .vdd(vdd), .vss(vss));
+  div2_tspc #(.rj(300f * rj_scale), .rj_seed(312)) u_d0p875(.clk(clk1p75), .rst(rst), .q(clk0p875), .qb(q0p875b), .vdd(vdd), .vss(vss));
+endmodule
+
+`endif
