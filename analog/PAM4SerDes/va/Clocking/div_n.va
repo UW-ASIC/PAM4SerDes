@@ -125,15 +125,10 @@ module div_n(ckin, ckout, vdd, vss);
              + de3 * min(max(($abstime - te3) / trf + 0.5, 0.0), 1.0);
     
     
-    // Breakpoints
-    @(timer(te0 - 0.5 * trf)) ;
-    @(timer(te0 + 0.5 * trf)) ;
-    @(timer(te1 - 0.5 * trf)) ;
-    @(timer(te1 + 0.5 * trf)) ;
-    @(timer(te2 - 0.5 * trf)) ;
-    @(timer(te2 + 0.5 * trf)) ;
-    @(timer(te3 - 0.5 * trf)) ;
-    @(timer(te3 + 0.5 * trf)) ;
+    // A step bound keeps the output edge resolved. It replaces two timer() breakpoints on
+    // the edge's corners: ngspice stops with "timestep too small" when two cells ask for
+    // time points closer together than its minimum step (see CHANGELOGS.md).
+    $bound_step(0.25 * trf);
 
     @(final_step)
       if (n_fast > 0 || n_slow > 0)
