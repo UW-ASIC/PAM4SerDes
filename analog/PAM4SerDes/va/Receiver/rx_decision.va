@@ -3,13 +3,22 @@
 
 `include "disciplines.vams"
 `include "Slicer/slicer.va"
+`include "Slicer/threshold_dac.va"
 `include "dfe1_unrolled_hr.va"
 `include "pam4_dec.va"
 
-// Module's purpose: 24 slicers + 1-tap unrolled DFE + one PAM4 decoder per phase.
+// Module's purpose: 24 slicers, their 24 threshold DACs, the 1-tap unrolled DFE and one
+// PAM4 decoder per phase.
 // Slicer g = 12 * phase + 3 * hypothesis + threshold (dfe1_unrolled_hr's numbering):
 // phase 0 samples on the rising edge of clk, phase 1 on the falling edge (its clock
-// is connected swapped). The DFE drives every slicer's reference.
+// is connected swapped).
+//
+// Each slicer's reference comes from its own threshold_dac. Slicer g needs
+//   T_k + alpha * L_h,  T_k = {-1, 0, +1} * v_thr,  L_h = {-3, -1, +1, +3} * v_level
+// and the DAC gets the nearest of its 64 codes: code = (that voltage - vmin) / step,
+// vmin = -166.6 mV, step = 5.20625 mV. The reference is therefore up to half a step,
+// 2.6 mV, away from the ideal value. The DFE model still computes the ideal references;
+// they are not connected.
 //
 // The decoders read single-ended logic and the DFE's thermometer outputs are
 // differential, so each decoder takes the positive leg and compares it with the
@@ -29,7 +38,8 @@ module rx_decision(
     electrical msb0, lsb0, msb1, lsb1;
 
     electrical [0:23] cand_p, cand_n;
-    electrical [0:23] ref_p, ref_n;
+    electrical [0:23] ref_p, ref_n;         // slicer references, from the threshold DACs
+    electrical [0:23] dfe_ref_p, dfe_ref_n; // the DFE model's own ideal references, not used
     electrical [0:5] therm_p, therm_n;
 
     parameter real vdd = 0.7 from (0:inf);          // supply the CML and logic levels follow
@@ -41,9 +51,35 @@ module rx_decision(
     dfe1_unrolled_hr #(.vdd(vdd), .alpha(alpha), .v_level(v_level), .v_thr(v_thr)) dfe(
     clk_p, clk_n,
     cand_p, cand_n,
-    ref_p, ref_n,
+    dfe_ref_p, dfe_ref_n,
     therm_p, therm_n
 );
+    // Instantiate the threshold DACs, one per slicer
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (-3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d0(ref_p[0], ref_n[0]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (-3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d1(ref_p[1], ref_n[1]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (-3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d2(ref_p[2], ref_n[2]);
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (-1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d3(ref_p[3], ref_n[3]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (-1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d4(ref_p[4], ref_n[4]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (-1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d5(ref_p[5], ref_n[5]);
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d6(ref_p[6], ref_n[6]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d7(ref_p[7], ref_n[7]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d8(ref_p[8], ref_n[8]);
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d9(ref_p[9], ref_n[9]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d10(ref_p[10], ref_n[10]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d11(ref_p[11], ref_n[11]);
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (-3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d12(ref_p[12], ref_n[12]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (-3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d13(ref_p[13], ref_n[13]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (-3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d14(ref_p[14], ref_n[14]);
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (-1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d15(ref_p[15], ref_n[15]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (-1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d16(ref_p[16], ref_n[16]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (-1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d17(ref_p[17], ref_n[17]);
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d18(ref_p[18], ref_n[18]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d19(ref_p[19], ref_n[19]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (1) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d20(ref_p[20], ref_n[20]);
+    threshold_dac #(.code(floor(((-1) * v_thr + alpha * (3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d21(ref_p[21], ref_n[21]);
+    threshold_dac #(.code(floor(((0) * v_thr + alpha * (3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d22(ref_p[22], ref_n[22]);
+    threshold_dac #(.code(floor(((1) * v_thr + alpha * (3) * v_level + 0.1666) / 5.20625e-3 + 0.5))) d23(ref_p[23], ref_n[23]);
+
     // Instantiate phase 0 slicers
     slicer s0(vinp, vinn, cand_p[0], cand_n[0], clk_p, clk_n, ref_p[0], ref_n[0]);
     slicer s1(vinp, vinn, cand_p[1], cand_n[1], clk_p, clk_n, ref_p[1], ref_n[1]);

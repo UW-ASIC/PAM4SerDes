@@ -1,0 +1,108 @@
+// clk_bias : clocking bias generator
+// Owner    : Omar ElSawy
+//
+// Takes one reference current from bias_ref and makes one reference current for every
+// clocking cell that needs a bias, one wire per consumer:
+//   ib_cp_tx, ib_cp_rx     the charge pumps of tx_pll and rx_cdr
+//   ib_pd_rx               the linear phase detector of rx_cdr
+//   ib_vco_tx, ib_vco_rx   the two VCOs
+//   ib_dcc_tx, ib_dcc_rx   the two duty-cycle correctors
+//   ib_buf_tx, ib_buf_rx   the two CML clock buffers
+//   ib_div_tx              the CML divider of tx_clkgen
+//   ib_div_rx[1:0]         the two CML dividers of rx_clkgen
+//
+// iref is this block's own bias input. It looks like a diode-connected mirror input,
+// vb_nom / iref_nom ohms to vss, and every output scales with the current it receives.
+// The check prints FAULT when the enabled block sees a reference more than 10 % off.
+//
+// Real circuit: a bank of mirrors from the reference current.
+// Modelled: the nominal value, the scaling with the reference, a smooth enable and
+// supply-low gate, a start-up time constant, output resistance and compliance, the
+// supply current.
+// Not modelled: mismatch between the copies, noise.
+//
+// The current outputs are sources from vdd. Each consumer is meant to mirror its copy
+// up to the current it needs (100 uA for the PLL's charge pump, 400 uA for the CDR's).
+// The clocking cells do not have a bias pin yet; until they do, the outputs end at the
+// top level.
+
+`ifndef PAM4_CLK_BIAS_VA
+`define PAM4_CLK_BIAS_VA
+
+`include "disciplines.vams"
+
+module clk_bias(vdd, vss, en, iref, ib_cp_tx, ib_cp_rx, ib_pd_rx, ib_vco_tx, ib_vco_rx,
+                ib_dcc_tx, ib_dcc_rx, ib_buf_tx, ib_buf_rx, ib_div_tx, ib_div_rx);
+  inout vdd, vss;
+  input en, iref;
+  output ib_cp_tx, ib_cp_rx, ib_pd_rx, ib_vco_tx, ib_vco_rx;
+  output ib_dcc_tx, ib_dcc_rx, ib_buf_tx, ib_buf_rx, ib_div_tx;
+  output [1:0] ib_div_rx;
+  electrical vdd, vss, en, iref, ib_cp_tx, ib_cp_rx, ib_pd_rx, ib_vco_tx, ib_vco_rx;
+  electrical ib_dcc_tx, ib_dcc_rx, ib_buf_tx, ib_buf_rx, ib_div_tx;
+  electrical [1:0] ib_div_rx;
+  electrical st; // start-up state: 0 off, 1 settled
+
+  (* desc = "reference current this block expects", units = "A" *)
+  parameter real iref_nom = 100u from (0:inf);
+  (* desc = "voltage of the reference input at the nominal current", units = "V" *)
+  parameter real vb_nom = 0.35 from (0:inf);
+  (* desc = "reference current of each output", units = "A" *)
+  parameter real ib_nom = 100u from (0:inf);
+  (* desc = "lowest supply for a full output", units = "V" *)
+  parameter real vdd_min = 0.6 from (0:inf);
+  (* desc = "width of the supply-low transition", units = "V" *)
+  parameter real vdd_w = 0.02 from (0:inf);
+  (* desc = "enable threshold", units = "V" *)
+  parameter real ven_th = 0.35;
+  (* desc = "width of the enable transition", units = "V" *)
+  parameter real ven_w = 0.02 from (0:inf);
+  (* desc = "start-up time constant", units = "s" *)
+  parameter real t_start = 1n from (0:inf);
+  (* desc = "compliance knee of the outputs, below vdd", units = "V" *)
+  parameter real vdsat = 0.1 from (0:inf);
+  (* desc = "output resistance of each output", units = "Ohm" *)
+  parameter real rout_i = 1e6 from (0:inf);
+  (* desc = "supply current of the mirror bank, besides the outputs", units = "A" *)
+  parameter real idd = 50u from [0:inf);
+
+  real on, k, iout;
+
+  analog begin
+    // the reference input: a diode-connected mirror input
+    I(iref, vss) <+ V(iref, vss) * iref_nom / vb_nom;
+    k = V(iref, vss) / vb_nom; // 1 at the nominal reference
+
+    // start-up state: enable and supply-low through smooth gates, then a first-order settle
+    I(st, vss) <+ V(st, vss) - 0.25 * (1.0 + tanh((V(en, vss) - ven_th) / ven_w))
+                                    * (1.0 + tanh((V(vdd, vss) - vdd_min) / vdd_w));
+    I(st, vss) <+ t_start * ddt(V(st, vss));
+    on = V(st, vss);
+
+    // bias check: the reference within 10 % of nominal while enabled
+    @(above(abs(k - 1.0) - 0.1))
+      if (on > 0.5) $strobe("clk_bias: FAULT, reference is %g of nominal at t = %e s", k, $abstime);
+    @(above(0.1 - abs(k - 1.0)))
+      if (on > 0.5) $strobe("clk_bias: reference valid at t = %e s", $abstime);
+
+    // one current copy per consumer
+    iout = on * k * ib_nom;
+    I(vdd, ib_cp_tx)     <+ iout * tanh(V(vdd, ib_cp_tx) / vdsat) + V(vdd, ib_cp_tx) / rout_i;
+    I(vdd, ib_cp_rx)     <+ iout * tanh(V(vdd, ib_cp_rx) / vdsat) + V(vdd, ib_cp_rx) / rout_i;
+    I(vdd, ib_pd_rx)     <+ iout * tanh(V(vdd, ib_pd_rx) / vdsat) + V(vdd, ib_pd_rx) / rout_i;
+    I(vdd, ib_vco_tx)    <+ iout * tanh(V(vdd, ib_vco_tx) / vdsat) + V(vdd, ib_vco_tx) / rout_i;
+    I(vdd, ib_vco_rx)    <+ iout * tanh(V(vdd, ib_vco_rx) / vdsat) + V(vdd, ib_vco_rx) / rout_i;
+    I(vdd, ib_dcc_tx)    <+ iout * tanh(V(vdd, ib_dcc_tx) / vdsat) + V(vdd, ib_dcc_tx) / rout_i;
+    I(vdd, ib_dcc_rx)    <+ iout * tanh(V(vdd, ib_dcc_rx) / vdsat) + V(vdd, ib_dcc_rx) / rout_i;
+    I(vdd, ib_buf_tx)    <+ iout * tanh(V(vdd, ib_buf_tx) / vdsat) + V(vdd, ib_buf_tx) / rout_i;
+    I(vdd, ib_buf_rx)    <+ iout * tanh(V(vdd, ib_buf_rx) / vdsat) + V(vdd, ib_buf_rx) / rout_i;
+    I(vdd, ib_div_tx)    <+ iout * tanh(V(vdd, ib_div_tx) / vdsat) + V(vdd, ib_div_tx) / rout_i;
+    I(vdd, ib_div_rx[0]) <+ iout * tanh(V(vdd, ib_div_rx[0]) / vdsat) + V(vdd, ib_div_rx[0]) / rout_i;
+    I(vdd, ib_div_rx[1]) <+ iout * tanh(V(vdd, ib_div_rx[1]) / vdsat) + V(vdd, ib_div_rx[1]) / rout_i;
+
+    // the block's own supply current
+    I(vdd, vss) <+ on * idd;
+  end
+endmodule
+
+`endif

@@ -16,8 +16,9 @@
 //
 // vddo is the 1.25 V output-stage supply (tx_bias, driver); vdd is the 0.7 V core.
 // en and vref are tx_bias's enable (high = on, 1.25 V logic) and its 0.6 V reference.
-// tx_bias.i_pdrv (pre-driver tail current) is unconnected: predriver_cml is ideal and
-// has no bias pin yet.
+// tx_bias sinks one current for all six pre-drivers (i_pdrv). tx_predrv_bias turns it
+// into six reference currents, one wire per predriver_cml, and each pre-driver's swing
+// follows the current it receives.
 
 `ifndef PAM4_TX_TOP_VA
 `define PAM4_TX_TOP_VA
@@ -30,6 +31,7 @@
 `include "predriver_cml.va"
 `include "pam4_driver.va"
 `include "tx_bias.va"
+`include "../Biasing/tx_predrv_bias.va"
 
 module tx_top(ckin, rst, en, vref, txp, txn, pgood, vdd, vddo, vss);
   input ckin, rst, en, vref;
@@ -45,6 +47,7 @@ module tx_top(ckin, rst, en, vref, txp, txn, pgood, vdd, vddo, vss);
   electrical dm_pre_p, dm_pre_n, dm_main_p, dm_main_n, dm_post_p, dm_post_n; // after the pre-drivers
   electrical dl_pre_p, dl_pre_n, dl_main_p, dl_main_n, dl_post_p, dl_post_n;
   electrical i_msb_pre, i_msb_main, i_msb_post, i_lsb_pre, i_lsb_main, i_lsb_post, i_pdrv;
+  electrical [5:0] ib_pd;                      // one bias wire per pre-driver
 
   (* desc = "FFE pre-cursor weight, magnitude (applied negative)" *)
   parameter real w_pre = 0.05 from [0:1];
@@ -79,12 +82,14 @@ module tx_top(ckin, rst, en, vref, txp, txn, pgood, vdd, vddo, vss);
     .pre_p(l_pre_p), .pre_n(l_pre_n), .main_p(l_main_p), .main_n(l_main_n),
     .post_p(l_post_p), .post_n(l_post_n), .pa_p(pa_l_p), .pa_n(pa_l_n), .vdd(vdd), .vss(vss));
 
-  predriver_cml u_pd_m_pre(.inp(m_pre_p), .inn(m_pre_n), .outp(dm_pre_p), .outn(dm_pre_n));
-  predriver_cml u_pd_m_main(.inp(m_main_p), .inn(m_main_n), .outp(dm_main_p), .outn(dm_main_n));
-  predriver_cml u_pd_m_post(.inp(m_post_p), .inn(m_post_n), .outp(dm_post_p), .outn(dm_post_n));
-  predriver_cml u_pd_l_pre(.inp(l_pre_p), .inn(l_pre_n), .outp(dl_pre_p), .outn(dl_pre_n));
-  predriver_cml u_pd_l_main(.inp(l_main_p), .inn(l_main_n), .outp(dl_main_p), .outn(dl_main_n));
-  predriver_cml u_pd_l_post(.inp(l_post_p), .inn(l_post_n), .outp(dl_post_p), .outn(dl_post_n));
+  predriver_cml u_pd_m_pre(.inp(m_pre_p), .inn(m_pre_n), .outp(dm_pre_p), .outn(dm_pre_n), .ib(ib_pd[0]), .vss(vss));
+  predriver_cml u_pd_m_main(.inp(m_main_p), .inn(m_main_n), .outp(dm_main_p), .outn(dm_main_n), .ib(ib_pd[1]), .vss(vss));
+  predriver_cml u_pd_m_post(.inp(m_post_p), .inn(m_post_n), .outp(dm_post_p), .outn(dm_post_n), .ib(ib_pd[2]), .vss(vss));
+  predriver_cml u_pd_l_pre(.inp(l_pre_p), .inn(l_pre_n), .outp(dl_pre_p), .outn(dl_pre_n), .ib(ib_pd[3]), .vss(vss));
+  predriver_cml u_pd_l_main(.inp(l_main_p), .inn(l_main_n), .outp(dl_main_p), .outn(dl_main_n), .ib(ib_pd[4]), .vss(vss));
+  predriver_cml u_pd_l_post(.inp(l_post_p), .inn(l_post_n), .outp(dl_post_p), .outn(dl_post_n), .ib(ib_pd[5]), .vss(vss));
+
+  tx_predrv_bias u_pdb(.vdd(vddo), .vss(vss), .isum(i_pdrv), .ib(ib_pd));
 
   pam4_driver u_drv(
     .msb_pre_p(dm_pre_p), .msb_pre_n(dm_pre_n), .msb_main_p(dm_main_p), .msb_main_n(dm_main_n),

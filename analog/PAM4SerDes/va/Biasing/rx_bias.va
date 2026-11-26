@@ -1,0 +1,110 @@
+// rx_bias : receiver bias generator
+// Owner   : Omar ElSawy
+//
+// Takes one reference current from bias_ref and makes every bias the receiver needs,
+// one wire per consumer:
+//   vtt             termination reference voltage, to rx_term (through rx_afe)
+//   vctrl           VGA gain-control voltage, to vga (through rx_afe)
+//   ib_ctle         reference current for the CTLE
+//   ib_vga          reference current for the VGA
+//   ib_slicer[23:0] reference current for each of the 24 slicers
+//   ib_demux[11:0]  reference current for each of the 12 CML demultiplexers
+//
+// iref is this block's own bias input. It looks like a diode-connected mirror input,
+// vb_nom / iref_nom ohms to vss, and every output scales with the current it receives.
+// The check prints FAULT when the enabled block sees a reference more than 10 % off.
+//
+// Real circuit: mirrors from the reference current, a resistor string or small DAC for
+// the two voltages.
+// Modelled: the nominal values, the scaling with the reference, a smooth enable and
+// supply-low gate, a start-up time constant, output resistance and compliance, the
+// supply current.
+// Not modelled: mismatch between the copies, noise, the gain-control loop behind vctrl.
+//
+// The current outputs are sources from vdd. The cells they are meant for do not have a
+// bias pin yet; until they do, those outputs end at the top level.
+
+`ifndef PAM4_RX_BIAS_VA
+`define PAM4_RX_BIAS_VA
+
+`include "disciplines.vams"
+
+module rx_bias(vdd, vss, en, iref, vtt, vctrl, ib_ctle, ib_vga, ib_slicer, ib_demux);
+  inout vdd, vss;
+  input en, iref;
+  output vtt, vctrl, ib_ctle, ib_vga;
+  output [23:0] ib_slicer;
+  output [11:0] ib_demux;
+  electrical vdd, vss, en, iref, vtt, vctrl, ib_ctle, ib_vga;
+  electrical [23:0] ib_slicer;
+  electrical [11:0] ib_demux;
+  electrical st; // start-up state: 0 off, 1 settled
+
+  (* desc = "reference current this block expects", units = "A" *)
+  parameter real iref_nom = 100u from (0:inf);
+  (* desc = "voltage of the reference input at the nominal current", units = "V" *)
+  parameter real vb_nom = 0.35 from (0:inf);
+  (* desc = "termination reference voltage", units = "V" *)
+  parameter real vtt_nom = 0.55 from (0:inf);
+  (* desc = "VGA gain-control voltage", units = "V" *)
+  parameter real vctrl_nom = 0.35 from [0:inf);
+  (* desc = "reference current of each current output", units = "A" *)
+  parameter real ib_nom = 100u from (0:inf);
+  (* desc = "lowest supply for a full output", units = "V" *)
+  parameter real vdd_min = 0.6 from (0:inf);
+  (* desc = "width of the supply-low transition", units = "V" *)
+  parameter real vdd_w = 0.02 from (0:inf);
+  (* desc = "enable threshold", units = "V" *)
+  parameter real ven_th = 0.35;
+  (* desc = "width of the enable transition", units = "V" *)
+  parameter real ven_w = 0.02 from (0:inf);
+  (* desc = "start-up time constant", units = "s" *)
+  parameter real t_start = 1n from (0:inf);
+  (* desc = "output resistance of the two voltage outputs", units = "Ohm" *)
+  parameter real rout_v = 10 from (0:inf);
+  (* desc = "compliance knee of the current outputs, below vdd", units = "V" *)
+  parameter real vdsat = 0.1 from (0:inf);
+  (* desc = "output resistance of each current output", units = "Ohm" *)
+  parameter real rout_i = 1e6 from (0:inf);
+  (* desc = "supply current of the mirrors and the divider, besides the outputs", units = "A" *)
+  parameter real idd = 100u from [0:inf);
+
+  real on, k, iout;
+  genvar i;
+
+  analog begin
+    // the reference input: a diode-connected mirror input
+    I(iref, vss) <+ V(iref, vss) * iref_nom / vb_nom;
+    k = V(iref, vss) / vb_nom; // 1 at the nominal reference
+
+    // start-up state: enable and supply-low through smooth gates, then a first-order settle
+    I(st, vss) <+ V(st, vss) - 0.25 * (1.0 + tanh((V(en, vss) - ven_th) / ven_w))
+                                    * (1.0 + tanh((V(vdd, vss) - vdd_min) / vdd_w));
+    I(st, vss) <+ t_start * ddt(V(st, vss));
+    on = V(st, vss);
+
+    // bias check: the reference within 10 % of nominal while enabled
+    @(above(abs(k - 1.0) - 0.1))
+      if (on > 0.5) $strobe("rx_bias: FAULT, reference is %g of nominal at t = %e s", k, $abstime);
+    @(above(0.1 - abs(k - 1.0)))
+      if (on > 0.5) $strobe("rx_bias: reference valid at t = %e s", $abstime);
+
+    // the two voltages, through their output resistance
+    I(vtt, vss)   <+ (V(vtt, vss) - on * k * vtt_nom) / rout_v;
+    I(vctrl, vss) <+ (V(vctrl, vss) - on * k * vctrl_nom) / rout_v;
+
+    // one current copy per consumer
+    iout = on * k * ib_nom;
+    I(vdd, ib_ctle) <+ iout * tanh(V(vdd, ib_ctle) / vdsat) + V(vdd, ib_ctle) / rout_i;
+    I(vdd, ib_vga)  <+ iout * tanh(V(vdd, ib_vga) / vdsat) + V(vdd, ib_vga) / rout_i;
+    for (i = 0; i < 24; i = i + 1)
+      I(vdd, ib_slicer[i]) <+ iout * tanh(V(vdd, ib_slicer[i]) / vdsat) + V(vdd, ib_slicer[i]) / rout_i;
+    for (i = 0; i < 12; i = i + 1)
+      I(vdd, ib_demux[i]) <+ iout * tanh(V(vdd, ib_demux[i]) / vdsat) + V(vdd, ib_demux[i]) / rout_i;
+
+    // the block's own supply current
+    I(vdd, vss) <+ on * idd;
+  end
+endmodule
+
+`endif
