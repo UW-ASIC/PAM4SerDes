@@ -17,6 +17,8 @@ jobs:
       - name: Find digital modules
         id: find-modules
         run: |
+          # ponytail: no digital/ yet -> no modules, lint/test jobs skip
+          [ -d digital ] || { echo 'modules=[]' >> $GITHUB_OUTPUT; exit 0; }
           # Find all directories in digital/ that have a build/verification/Makefile
           MODULES=$(find digital -mindepth 1 -maxdepth 1 -type d -exec test -f {}/build/verification/Makefile \; -print | xargs -I{} basename {} | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "Found modules: $MODULES"

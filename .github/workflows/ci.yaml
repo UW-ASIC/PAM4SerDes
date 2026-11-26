@@ -2,8 +2,8 @@ name: CI
 on:
   push:
     paths:
+      # ponytail: TinyTapeout flow needs caravel/; runs once it exists
       - 'caravel/**'
-      - '.github/workflows/**'
   workflow_dispatch:
 jobs:
   detect_project_type:
