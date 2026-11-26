@@ -53,6 +53,8 @@ if (abs(lvl00 + 0.4) > 1m) | (abs(lvl01 + 0.13333) > 1m) | (abs(lvl10 - 0.13333)
   echo "FAIL tx_driver_test: a level is more than 1 mV off (see the values above)"
 else
   echo "PASS tx_driver_test: four PAM4 levels, FFE peak and de-emphasis within 1 mV"
+  echo "SPEC Transmitter PAM4 levels, differential | $&lvl00, $&lvl01, $&lvl10, $&lvl11 V"
+  echo "SPEC Transmitter FFE: peak, de-emphasised level | $&peak, $&deemph V"
 end
 quit
 .endc

@@ -1,0 +1,63 @@
+name: analog
+# Checks the Verilog-A design on every change to it:
+#   lint   every .va file compiles (vera --lint)
+#   arch   the hierarchy in the .va files is the one in analog/PAM4SerDes/architecture.txt
+#   link   the test decks pass on ngspice (PLL lock, datapath, clock recovery, whole top)
+#   specs  the numbers those decks measured are written into README.md
+# The same four steps run locally with `make -C analog/PAM4SerDes/build/sim check`.
+on:
+  push:
+    paths:
+      - "analog/**"
+      - ".flows/tools/va_*.py"
+      - ".flows/env/**"
+      - ".github/workflows/analog.yaml"
+  pull_request:
+    paths:
+      - "analog/**"
+      - ".flows/tools/va_*.py"
+      - ".flows/env/**"
+      - ".github/workflows/analog.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install nix
+        uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+
+      # ponytail: no nix store cache, so VerA is built from source on every run (about
+      # four minutes). Add a cache when that gets in the way.
+      - name: Lint, architecture, link decks, specs
+        run: nix-shell .flows/env/va.nix --run "make -C analog/PAM4SerDes/build/sim check"
+
+      - name: Specs in the job summary
+        if: always()
+        run: sed -n '/<!-- specs:begin -->/,/<!-- specs:end -->/p' README.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload simulation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analog-sim-logs
+          path: analog/PAM4SerDes/build/sim/out/*.log
+
+      # Only on main, and only README.md, which is not in `paths` above: no loop.
+      - name: Commit the specs table if it changed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git diff --quiet README.md && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "README: specs from the Verilog-A checks" README.md
+          git push

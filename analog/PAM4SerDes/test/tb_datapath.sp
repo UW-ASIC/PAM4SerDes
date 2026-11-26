@@ -9,10 +9,10 @@
 * Two things this deck needs from ngspice (45 or newer):
 *  - the default solver. `.option klu` is faster but gives wrong node voltages with
 *    these OSDI devices;
-*  - the fourth `tran` argument. ngspice's minimum time step is 1e-11 times it, so 1m
-*    gives a 10 fs floor; without it the floor is 1e-23 s and the run dies with
-*    "timestep too small" just before a clock edge. The models still limit the real step
-*    to 0.5 ps.
+*  - the fourth `tran` argument. ngspice's minimum time step is 1e-11 times it, so 10u
+*    gives 1e-16 s. A cell's timer() is a time point ngspice must land on, and the run
+*    stops with "timestep too small" if two of them fall closer together than that
+*    minimum. The models still limit the real step to 0.5 ps.
 .include "../build/sim/out/pam4_serdes.cir"
 
 * receiver clock offset from the transmitter's, and the channel's flat gain: with the
@@ -56,11 +56,12 @@ Nchk wclk
 .save v(err) v(words) v(wclk) v(txp) v(txn) v(afe_p) v(afe_n)
 .control
 set noaskquit
-tran 1p 26n 0 1m
+tran 1p 26n 0 10u
 let nerr = v(err)[length(v(err)) - 1]
 let nwords = v(words)[length(v(words)) - 1]
 if (nerr < 0.5) & (nwords > 9.5)
   echo "PASS tb_datapath: $&nerr errors in $&nwords words of 64 bits"
+  echo "SPEC Bit errors, transmitter to receiver on ideal clocks | $&nerr in $&nwords words of 64 bits"
 else
   echo "FAIL tb_datapath: $&nerr errors in $&nwords words of 64 bits"
 end

@@ -67,6 +67,9 @@ let
   };
 in
 {
+  # Exported on their own for .flows/env/va.nix, the small shell CI checks the Verilog-A in.
+  inherit vera ngspice;
+
   packages = [
     # EDA tools, straight from nixpkgs.
     pkgs.xschem

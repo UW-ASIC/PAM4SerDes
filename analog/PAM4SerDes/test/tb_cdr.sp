@@ -57,13 +57,15 @@ Nchk wclk
 .save v(err) v(words) v(vctl) v(lock) v(wclk)
 .control
 set noaskquit
-tran 1p 90n 0 1m
+tran 1p 90n 0 10u
 let nerr = v(err)[length(v(err)) - 1]
 let nwords = v(words)[length(v(words)) - 1]
 let vend = v(vctl)[length(v(vctl)) - 1]
 echo "vctl at the end: $&vend V"
 if (nerr < 0.5) & (nwords > 9.5)
   echo "PASS tb_cdr: $&nerr errors in $&nwords words of 64 bits"
+  echo "SPEC Bit errors with the receiver clock recovered from the data | $&nerr in $&nwords words of 64 bits"
+  echo "SPEC Clock recovery control voltage, tracking | $&vend V"
 else
   echo "FAIL tb_cdr: $&nerr errors in $&nwords words of 64 bits"
 end

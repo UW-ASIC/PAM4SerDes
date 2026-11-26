@@ -158,7 +158,7 @@ def load(top):
         # A helper defined in the module's own file is part of its device, even when
         # another file defines a module of the same name (phase_aligner, cdr_pd_linear).
         m.foreign = [t for t, *_ in m.insts if t not in local[m.path]]
-    return mods, max(p.stat().st_mtime for p in seen)
+    return mods, seen
 
 
 def param(v):
@@ -170,7 +170,8 @@ def param(v):
 
 def compose(top, osdi_dir, also=()):
     """The deck text, and the device modules it loads: {module: its .va file}."""
-    mods, newest = load(top)
+    mods, seen = load(top)
+    newest = max(p.stat().st_mtime for p in seen)
     name = top.stem
     if name not in mods:
         sys.exit(f"{top}: no module named {name}")
@@ -232,6 +233,44 @@ def compose(top, osdi_dir, also=()):
     return deck, devices, newest
 
 
+def tree(top):
+    """The architecture as text: who places what, how many of each cell, what is left out.
+
+    One line per module that places modules from other files, then the flattened count of
+    every cell in the design, the placeholder cells in use, and the .va files next to the
+    top that nothing includes. Stable order, so it can be compared with a reference file.
+    """
+    import collections
+    mods, seen = load(top)
+    lines, total = [], collections.Counter()
+
+    def walk(name, times):
+        kids = collections.Counter(mods[name].foreign)
+        if not kids:
+            total[name] += times
+        for kid, n in kids.items():
+            walk(kid, times * n)
+
+    walk(top.stem, 1)
+    reach, todo = set(), [top.stem]
+    while todo:
+        name = todo.pop()
+        if name not in reach:
+            reach.add(name)
+            todo += mods[name].foreign
+    for name in sorted(reach):
+        kids = collections.Counter(mods[name].foreign)
+        if kids:
+            lines.append(f"{name}: " + ", ".join(k if n == 1 else f"{k} x{n}" for k, n in sorted(kids.items())))
+    lines.append("cells: " + ", ".join(f"{k} x{n}" for k, n in sorted(total.items())))
+    held = sorted(n for n in total if "placeholders" in mods[n].path.parts)
+    lines.append("placeholders: " + (", ".join(held) or "none"))
+    root = top.resolve().parent
+    unused = sorted(str(f.relative_to(root)) for f in root.rglob("*.va") if f.resolve() not in seen)
+    lines.append("not in the design: " + (", ".join(unused) or "none"))
+    return "\n".join(lines) + "\n"
+
+
 def build(devices, osdi_dir, newest):
     """vera --emit-osdi every device whose .osdi is older than the newest .va."""
     # ponytail: one edited .va rebuilds every device (about two minutes). Track each
@@ -264,11 +303,17 @@ def build(devices, osdi_dir, newest):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("top", type=Path, help="top-level .va; the module has the file's name")
-    ap.add_argument("-o", "--out", type=Path, required=True, help="deck to write; devices go to <its folder>/osdi/")
+    ap.add_argument("-o", "--out", type=Path, help="deck to write; devices go to <its folder>/osdi/")
+    ap.add_argument("--tree", action="store_true", help="print the architecture (see tree) and stop")
     ap.add_argument("--also", type=Path, nargs="*", default=[], metavar="FILE.va",
                     help="testbench devices to build and load too (one module per file, named like it)")
     ap.add_argument("--no-build", action="store_true", help="write the deck only")
     a = ap.parse_args()
+    if a.tree:
+        sys.stdout.write(tree(a.top))
+        return
+    if not a.out:
+        ap.error("give -o OUT, or --tree")
     osdi_dir = a.out.parent / "osdi"
     try:
         deck, devices, newest = compose(a.top, osdi_dir, a.also)
